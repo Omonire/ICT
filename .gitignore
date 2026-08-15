@@ -1,0 +1,36 @@
+# dependencies
+node_modules/
+
+# next.js
+.next/
+out/
+build/
+next-env.d.ts
+
+# production
+dist/
+backend/dist/
+
+# misc
+.DS_Store
+*.pem
+*.log
+
+# env
+.env
+.env.local
+.env.production
+.env*.local
+
+# typescript
+*.tsbuildinfo
+
+# uploads / temp
+uploads/
+tmp/
+
+# stray root-level sqlite (canonical demo db lives in backend/data/)
+/data/
+
+# test / coverage
+coverage/
