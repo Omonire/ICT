@@ -96,21 +96,20 @@ chmod 755 backend/data
 
 ## Build & Start
 
+> **Single-process mode (recommended):** `server.js` runs the Express API and the Next.js frontend in one process on one port (default 3000). Requests under `/api` are handled by Express; everything else is rendered by Next.js.
+
 ```bash
 # Install dependencies
 npm install
 
-# Build backend (TypeScript → JavaScript)
-cd backend && npx tsc && cd ..
+# Build backend (TypeScript → JavaScript) + frontend
+npm run build
 
-# Build frontend
-npx next build
-
-# Start production servers
+# Start the single production server (API + web on one port)
 npm run start
 ```
 
-This runs both the API (:4000) and the Next.js production server (:3000) via `concurrently`.
+The server binds to port 3000 (override with `PORT`). To run the API and web as two separate processes instead (API :4000, web :3000), use `npm run start:split`.
 
 ---
 
@@ -289,15 +288,15 @@ cp backend/.env.example backend/.env
 # Edit .env files with production values
 
 # Build
-cd backend && npx tsc && cd ..
-npx next build
+npm run build
 
-# Start with PM2 (recommended)
-pm2 start backend/dist/index.js --name examflow-api
-pm2 start "npx next start -p 3000" --name examflow-web
+# Start with PM2 (single process on one port — API + web)
+pm2 start server.js --name examflow
 pm2 save
 pm2 startup
 ```
+
+The single-process server binds to one port (3000 by default), so one PM2 entry is all you need. Set `PORT=3000` in `.env` and configure Nginx to proxy that port.
 
 ---
 
@@ -308,24 +307,17 @@ server {
     listen 80;
     server_name yourdomain.com;
 
-    # Frontend
+    # Single process serves both the frontend and the API on one port
     location / {
         proxy_pass http://127.0.0.1:3000;
         proxy_http_version 1.1;
         proxy_set_header Upgrade $http_upgrade;
         proxy_set_header Connection 'upgrade';
         proxy_set_header Host $host;
-        proxy_cache_bypass $http_upgrade;
-    }
-
-    # API
-    location /api {
-        proxy_pass http://127.0.0.1:4000;
-        proxy_http_version 1.1;
-        proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
         proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_cache_bypass $http_upgrade;
     }
 }
 ```

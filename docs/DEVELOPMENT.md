@@ -85,7 +85,8 @@ npm run dev:api
 | `npm run dev:web`     | Start Next.js dev server only              |
 | `npm run dev:api`     | Start backend API server only              |
 | `npm run build`       | Production build (backend + frontend)      |
-| `npm run start`       | Production start (API + web)               |
+| `npm run start`       | Production start — API + web in ONE process/port (server.js) |
+| `npm run start:split` | Production start as two processes (API :4000, web :3000) |
 | `npm run seed`        | Seed/replace demo data                     |
 | `npm run typecheck`   | Type-check backend + frontend              |
 

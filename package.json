@@ -11,7 +11,8 @@
     "dev:web": "next dev -p 3000",
     "dev:api": "npm run dev --workspace backend",
     "build": "npm run build --workspace backend && next build",
-    "start": "concurrently -n api,web -c teal,blue \"npm run start --workspace backend\" \"next start -p 3000\"",
+    "start": "node server.js",
+    "start:split": "concurrently -n api,web -c teal,blue \"npm run start --workspace backend\" \"next start -p 3000\"",
     "seed": "npm run seed --workspace backend",
     "typecheck": "npm run typecheck --workspace backend && tsc --noEmit"
   },

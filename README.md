@@ -53,7 +53,7 @@ Import CSV → Define Halls → Create Sessions → Generate Schedule → Downlo
 - Node.js 18+
 - npm 9+
 
-### Install & Run
+### Install & Run (Development)
 
 ```bash
 git clone https://github.com/Omonire/ICT.git
@@ -63,8 +63,7 @@ npm run seed
 npm run dev
 ```
 
-- **Frontend:** http://localhost:3000
-- **API:** http://localhost:4000
+In dev the two servers run concurrently — **Frontend:** http://localhost:3000 · **API:** http://localhost:4000. For production they run in one process on one port: `npm run build && npm run start` → http://localhost:3000.
 
 ### Demo Accounts
 
@@ -89,15 +88,17 @@ docker-compose up -d
 docker-compose exec api node dist/index.js --seed   # seed once
 ```
 
-### Manual Server
+### Manual Server (one command, one port)
+
+The API and frontend run together in a single process on one port — `/api/*` is handled by Express, everything else by Next.js.
 
 ```bash
 npm install
-cd backend && npx tsc && cd ..
-npx next build
-pm2 start backend/dist/index.js --name examflow-api
-pm2 start "npx next start -p 3000" --name examflow-web
+npm run build
+npm run start          # http://localhost:3000 serves API + web
 ```
+
+Optionally keep them as two processes with `npm run start:split`, or use PM2: `pm2 start server.js --name examflow`.
 
 ### Vercel (Backend + Frontend)
 

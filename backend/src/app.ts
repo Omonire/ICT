@@ -98,7 +98,15 @@ async function ensureReady(): Promise<void> {
 }
 
 export default async function handler(req: Request, res: Response): Promise<void> {
+  const app = await initApi();
+  return app(req, res);
+}
+
+// Shared bootstrap used by the standalone custom server (server.js) and the
+// Vercel default handler above: initialize the DataSource, keep the schema in
+// sync (no migrations exist yet) and seed on cold start.
+export async function initApi(): Promise<Express> {
   await ensureReady();
   if (!cachedApp) cachedApp = createApp();
-  return cachedApp(req, res);
+  return cachedApp;
 }
