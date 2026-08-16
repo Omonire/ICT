@@ -122,12 +122,7 @@ pm2 start "npx next start -p 3000" --name examflow-web
 # Backend
 PORT=4000
 NODE_ENV=production
-DB_TYPE=postgres              # or sqlite for demo
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=examflow
-DB_PASSWORD=your-password
-DB_NAME=examflow
+DATABASE_URL=postgres://examflow:your-password@localhost:5432/examflow
 JWT_SECRET=your-64-char-random-secret
 JWT_EXPIRES_IN=7d
 COOKIE_SECURE=true

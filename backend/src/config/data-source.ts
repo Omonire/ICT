@@ -1,6 +1,6 @@
 import 'reflect-metadata';
 import { DataSource } from 'typeorm';
-import { env } from './env';
+import { env, dbConfig } from './env';
 import { User } from '../entities/User';
 import { Candidate } from '../entities/Candidate';
 import { CareerGroup } from '../entities/CareerGroup';
@@ -23,31 +23,14 @@ export const entities = [
   ScheduleMeta,
 ];
 
-const base = {
-  entities,
-  logging: false,
-};
-
 const synchronize = !env.isProd;
 
-export const AppDataSource =
-  env.dbType === 'sqlite'
-    ? new DataSource({
-        ...base,
-        type: 'sqlite',
-        database: env.dbFile,
-        synchronize,
-      })
-    : new DataSource({
-        ...base,
-        type: 'postgres',
-        host: env.dbHost,
-        port: env.dbPort,
-        username: env.dbUser,
-        password: env.dbPassword,
-        database: env.dbName,
-        synchronize,
-      });
+export const AppDataSource = new DataSource({
+  entities,
+  logging: false,
+  synchronize,
+  ...dbConfig,
+});
 
 export async function initDatabase(): Promise<DataSource> {
   if (!AppDataSource.isInitialized) {

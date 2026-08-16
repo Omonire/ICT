@@ -36,13 +36,8 @@ This guide covers deploying ExamFlow to production environments.
 PORT=4000
 NODE_ENV=production
 
-# Use PostgreSQL in production
-DB_TYPE=postgres
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=examflow
-DB_PASSWORD=<strong-password>
-DB_NAME=examflow
+# Database — single connection URL
+DATABASE_URL=postgres://examflow:<strong-password>@localhost:5432/examflow
 
 # Auth — use a strong, random secret (64+ chars)
 JWT_SECRET=<generate-with-openssl-rand-base64-64>
@@ -192,12 +187,7 @@ services:
     environment:
       PORT: 4000
       NODE_ENV: production
-      DB_TYPE: postgres
-      DB_HOST: db
-      DB_PORT: 5432
-      DB_USER: examflow
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_NAME: examflow
+      DATABASE_URL: postgres://examflow:${DB_PASSWORD}@db:5432/examflow
       JWT_SECRET: ${JWT_SECRET}
       COOKIE_SECURE: "true"
     depends_on:
@@ -334,7 +324,7 @@ Ensure `COOKIE_SECURE=true` in the backend `.env` so JWT cookies are only sent o
 - [ ] `JWT_SECRET` is a strong, random 64+ character string
 - [ ] `COOKIE_SECURE=true` (requires HTTPS)
 - [ ] `SEED_ON_STARTUP=false`
-- [ ] `DB_TYPE=postgres` with a strong database password
+- [ ] `DATABASE_URL` points to a PostgreSQL instance with a strong password
 - [ ] PostgreSQL is running and accessible
 - [ ] Backend is built (`tsc`) and running
 - [ ] Frontend is built (`next build`) and running

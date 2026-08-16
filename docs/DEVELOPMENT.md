@@ -295,10 +295,12 @@ Zero-config. Database file at `backend/data/examflow.sqlite`. TypeORM creates ta
 
 ### PostgreSQL
 
-1. Set `DB_TYPE=postgres` in `backend/.env`
-2. Configure `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASSWORD`, `DB_NAME`
-3. Create the database in PostgreSQL
-4. Restart the backend — tables auto-create
+1. Set `DATABASE_URL` in `backend/.env`:
+   ```bash
+   DATABASE_URL=postgres://user:password@localhost:5432/examflow
+   ```
+2. Create the database in PostgreSQL
+3. Restart the backend — tables auto-create
 
 ### Re-seeding
 
