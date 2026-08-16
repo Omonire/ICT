@@ -102,11 +102,11 @@ Optionally keep them as two processes with `npm run start:split`, or use PM2: `p
 
 ### Vercel (Backend + Frontend)
 
+Follow the full step-by-step guide: **[vercel.md](vercel.md)** — database setup, backend serverless function, frontend project, env vars, and troubleshooting.
+
 **Backend:** Import the repo as a Vercel project, add a serverless function for `backend/src/app.ts` (it ships with a Vercel-compatible default handler that auto-initializes the DB), set `DATABASE_URL` to a hosted Postgres (e.g. Vercel Postgres/Neon), and deploy.
 
-**Frontend:** Separate Vercel project, set `NEXT_PUBLIC_API_URL` to your backend URL, deploy.
-
-Full steps in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
+**Frontend:** Separate Vercel project, proxy `/api` to the backend (or set `NEXT_PUBLIC_API_URL`), deploy.
 
 ### Railway (Full Stack)
 
