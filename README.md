@@ -99,12 +99,13 @@ pm2 start backend/dist/index.js --name examflow-api
 pm2 start "npx next start -p 3000" --name examflow-web
 ```
 
-### Vercel (Frontend Only)
+### Vercel (Backend + Frontend)
 
-1. Push to GitHub
-2. Import on [vercel.com](https://vercel.com)
-3. Set `NEXT_PUBLIC_API_URL` to your backend URL
-4. Deploy
+**Backend:** Import the repo as a Vercel project, add a serverless function for `backend/src/app.ts` (it ships with a Vercel-compatible default handler that auto-initializes the DB), set `DATABASE_URL` to a hosted Postgres (e.g. Vercel Postgres/Neon), and deploy.
+
+**Frontend:** Separate Vercel project, set `NEXT_PUBLIC_API_URL` to your backend URL, deploy.
+
+Full steps in [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md).
 
 ### Railway (Full Stack)
 

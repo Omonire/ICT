@@ -1,7 +1,11 @@
+import 'reflect-metadata';
 import express, { Express } from 'express';
+import type { Request, Response } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { env } from './config/env';
+import { AppDataSource, initDatabase } from './config/data-source';
+import { runSeed } from './services/seeding';
 import { authenticate } from './middleware/auth';
 import { maintenanceMiddleware } from './middleware/maintenance';
 import { errorHandler, notFoundHandler } from './middleware/error';
@@ -58,4 +62,43 @@ export function createApp(): Express {
   app.use(errorHandler);
 
   return app;
+}
+
+// ─────────────────────────────────────────────────────────────
+// Vercel serverless entry
+//
+// Vercel's Node adapter requires a default export that is a
+// function or server. We lazy-initialize the DataSource (creating
+// the schema — there are no migrations — and seeding on cold start)
+// and then hand the request to the Express app.
+// ─────────────────────────────────────────────────────────────
+
+let cachedApp: Express | null = null;
+let dbReady: Promise<void> | null = null;
+
+async function ensureReady(): Promise<void> {
+  if (!dbReady) {
+    dbReady = (async () => {
+      if (!AppDataSource.isInitialized) {
+        await initDatabase();
+        // No migrations exist yet — keep schema in sync in production.
+        await AppDataSource.synchronize();
+      }
+      if (env.seedOnStartup) {
+        await runSeed();
+      }
+    })();
+  }
+  try {
+    await dbReady;
+  } catch (err) {
+    dbReady = null;
+    throw err;
+  }
+}
+
+export default async function handler(req: Request, res: Response): Promise<void> {
+  await ensureReady();
+  if (!cachedApp) cachedApp = createApp();
+  return cachedApp(req, res);
 }

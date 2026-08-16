@@ -220,14 +220,41 @@ docker-compose exec api node dist/index.js --seed
 
 ---
 
-## Vercel (Frontend Only)
+## Vercel
+
+Vercel can host both the **backend API** (as a serverless function) and the **Next.js frontend**. Since a `vercel.json` at the repo root would override Next.js auto-detection, deploy each piece as a **separate Vercel project**.
+
+### Vercel (Backend API)
+
+The backend ships with a serverless-compatible entrypoint at `backend/src/app.ts` — it exports a default handler that lazy-initializes the database, syncs the schema (no migrations yet), seeds on cold start (idempotent), and hands the request to Express.
+
+1. Push to GitHub
+2. In the Vercel dashboard, **Add New Project** → import this repo
+3. Set **Root Directory** to the repo root
+4. In **Build and Output Settings** → **Function** (or "Functions"), add a function with source file:
+   ```
+   backend/src/app.ts
+   ```
+   If the dashboard does not expose this, set the **Entrypoint / Build Command** to:
+   ```
+   cd backend && npm run build
+   ```
+   and configure the **Serverless Function path** as `backend/dist/app.js`.
+5. Set environment variables (see [Environment Configuration](#environment-configuration)):
+   - `DATABASE_URL` = `postgres://...` (a hosted Postgres such as Vercel Postgres or Neon — **required**; SQLite native bindings do not run reliably on serverless)
+   - `JWT_SECRET`, `JWT_EXPIRES_IN`, `COOKIE_SECURE=true`, `SEED_ON_STARTUP=false`
+6. Deploy. The API is served from `/` of that project's URL (e.g. `https://examflow-api.vercel.app/api/health`).
+
+> **Note:** Do **not** point Vercel at `backend/src/index.ts` — that entry calls `app.listen()` and is for the standalone server (`npm run start`). Serverless functions must use the `app.ts` default export.
+
+### Vercel (Frontend Only)
 
 Deploy the Next.js frontend to Vercel while the backend runs separately:
 
 1. Push to GitHub
 2. Import the repo on [vercel.com](https://vercel.com)
 3. Set environment variable:
-   - `NEXT_PUBLIC_API_URL` = `https://api.yourdomain.com/api`
+   - `NEXT_PUBLIC_API_URL` = `https://examflow-api.vercel.app/api`
 4. Deploy
 
 The Next.js config already includes API proxy rewrites for development. In production, point directly to your backend.
