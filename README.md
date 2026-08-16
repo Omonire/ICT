@@ -70,7 +70,6 @@ npm run dev
 
 | Role       | Email                      | Password       |
 | ---------- | -------------------------- | -------------- |
-
 | Admin      | admin@examflow.edu.ng      | `Admin123!`    |
 | Operator   | operator@examflow.edu.ng   | `Operator123!` |
 
