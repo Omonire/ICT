@@ -17,7 +17,7 @@ export function StatCard({ label, value, sub, icon, accent, children }: StatCard
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[12px] font-medium uppercase tracking-wide text-slate-500">{label}</p>
-          <p className={cn('mt-1.5 text-2xl font-semibold tracking-tight text-slate-900', accent && 'text-brand-700')}>
+          <p className={cn('mt-1.5 text-2xl font-semibold tracking-tight text-slate-900', accent && 'text-purple-700')}>
             {value}
           </p>
           {sub && <p className="mt-1 text-[12px] text-slate-500">{sub}</p>}

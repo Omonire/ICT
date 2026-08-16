@@ -49,7 +49,7 @@ export default function DashboardPage() {
           )}
           <Link
             href="/schedule"
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-600 px-4 text-sm font-medium text-white hover:bg-brand-700"
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-purple-600 px-4 text-sm font-medium text-white hover:bg-purple-700"
           >
             <CalendarClock className="h-4 w-4" /> Manage schedule
           </Link>
@@ -59,7 +59,7 @@ export default function DashboardPage() {
       {analytics.loading ? (
         <SkeletonCards count={4} />
       ) : (
-        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             label="Total candidates"
             value={a.candidates.total.toLocaleString()}
@@ -87,7 +87,7 @@ export default function DashboardPage() {
         </div>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader>
             <CardTitle>Exam cycle progress</CardTitle>
@@ -99,13 +99,13 @@ export default function DashboardPage() {
               label="Seat utilization"
               hint={`${a.utilizationPct}%`}
               value={a.utilizationPct}
-              indicatorClassName="bg-gradient-to-r from-brand-500 to-brand-700"
+              indicatorClassName="bg-purple-600"
             />
             <ProgressLabeled
               label="Exams completed"
               hint={`${a.completedPct}%`}
               value={a.completedPct}
-              indicatorClassName="bg-emerald-500"
+              indicatorClassName="bg-gold-500"
             />
           </CardContent>
         </Card>
@@ -134,14 +134,14 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 grid-cols-1 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader className="flex-row items-center justify-between">
             <div>
               <CardTitle>Session load</CardTitle>
               <CardDescription>How many candidates each session carries.</CardDescription>
             </div>
-            <Link href="/sessions" className="flex items-center gap-1 text-[13px] font-medium text-brand-700 hover:underline">
+            <Link href="/sessions" className="flex items-center gap-1 text-[13px] font-medium text-purple-700 hover:underline">
               All sessions <ArrowRight className="h-3.5 w-3.5" />
             </Link>
           </CardHeader>

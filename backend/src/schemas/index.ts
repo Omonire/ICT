@@ -9,7 +9,7 @@ export const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8, 'Password must be at least 8 characters'),
   name: z.string().min(1).max(120).optional(),
-  role: z.enum(['admin', 'operator', 'viewer']).default('operator'),
+  role: z.enum(['superadmin', 'admin', 'operator', 'viewer']).default('operator'),
 });
 
 export const candidateCreateSchema = z.object({
@@ -67,4 +67,9 @@ export const listQuerySchema = z.object({
   sessionId: z.string().uuid().optional(),
   sortBy: z.string().max(40).optional(),
   sortOrder: z.enum(['asc', 'desc']).optional(),
+});
+
+export const seedForSessionSchema = z.object({
+  sessionId: z.string().min(1, 'Session is required'),
+  count: z.number().int().min(1).max(5000).default(50),
 });

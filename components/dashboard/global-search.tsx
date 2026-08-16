@@ -72,7 +72,7 @@ export default function GlobalSearch() {
             className="flex items-center justify-between gap-2 px-3 py-2 hover:bg-slate-50"
           >
             <div className="flex min-w-0 items-center gap-2">
-              <span className="shrink-0 font-mono text-[12px] text-brand-600">{c.id}</span>
+              <span className="shrink-0 font-mono text-[12px] text-purple-600">{c.id}</span>
               <span className="truncate text-[13px] text-slate-700">{c.name}</span>
             </div>
             <span className="shrink-0 text-[11px] text-slate-400">
@@ -88,7 +88,7 @@ export default function GlobalSearch() {
         ))}
         <button
           onClick={() => void runSearch()}
-          className="flex w-full items-center justify-center gap-1.5 border-t-[0.5px] border-slate-100 px-3 py-2.5 text-[12px] font-medium text-brand-700 hover:bg-brand-50"
+          className="flex w-full items-center justify-center gap-1.5 border-t-[0.5px] border-slate-100 px-3 py-2.5 text-[12px] font-medium text-purple-700 hover:bg-purple-50"
         >
           See all results <ArrowRight className="h-3.5 w-3.5" />
         </button>

@@ -81,9 +81,9 @@ export default function AttendancePage() {
               </div>
               <Card className="divide-y-[0.5px] divide-slate-100">
                 {daySheets.map((sheet) => (
-                  <div key={`${sheet.sessionId}:${sheet.hallId}`} className="flex items-center justify-between gap-4 px-5 py-4 hover:bg-slate-50/60">
+                  <div key={`${sheet.sessionId}:${sheet.hallId}`} className="flex flex-col gap-3 px-5 py-4 hover:bg-slate-50/60 sm:flex-row sm:items-center sm:justify-between">
                     <div className="flex items-center gap-4">
-                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand-50 text-brand-700">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-50 text-purple-700">
                         <FileSpreadsheet className="h-5 w-5" />
                       </div>
                       <div>
@@ -96,7 +96,7 @@ export default function AttendancePage() {
                         </p>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex flex-wrap items-center gap-2">
                       <Button
                         variant="outline"
                         size="sm"

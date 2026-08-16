@@ -8,8 +8,8 @@ const badgeVariants = cva(
     variants: {
       variant: {
         default: 'bg-slate-100 text-slate-700',
-        brand: 'bg-brand-50 text-brand-700',
-        green: 'bg-emerald-50 text-emerald-700',
+        brand: 'bg-purple-50 text-purple-700',
+        green: 'bg-gold-50 text-gold-700',
         amber: 'bg-amber-50 text-amber-700',
         red: 'bg-red-50 text-red-700',
         slate: 'bg-slate-100 text-slate-600',
@@ -50,8 +50,8 @@ export function StatusBadge({ status }: { status: string }) {
       <span
         className={cn(
           'h-1.5 w-1.5 rounded-full',
-          map[status] === 'green' && 'bg-emerald-500',
-          map[status] === 'brand' && 'bg-brand-600',
+          map[status] === 'green' && 'bg-gold-500',
+          map[status] === 'brand' && 'bg-purple-600',
           map[status] === 'amber' && 'bg-amber-500',
           map[status] === 'red' && 'bg-red-500',
           map[status] === 'slate' && 'bg-slate-400',

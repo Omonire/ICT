@@ -14,8 +14,8 @@ const router = Router();
 
 router.get('/status', getStatus);
 router.get('/preview', preview);
-router.post('/generate', requireRole('admin', 'operator'), validateBody(scheduleGenerateSchema), generate);
-router.post('/confirm', requireRole('admin', 'operator'), confirm);
-router.post('/clear', requireRole('admin'), clear);
+router.post('/generate', requireRole('superadmin', 'admin', 'operator'), validateBody(scheduleGenerateSchema), generate);
+router.post('/confirm', requireRole('superadmin', 'admin', 'operator'), confirm);
+router.post('/clear', requireRole('superadmin', 'admin'), clear);
 
 export default router;

@@ -22,6 +22,7 @@ import { Progress } from '@/components/ui/progress';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { EmptyState } from '@/components/ui/empty-state';
 import { PageLoader } from '@/components/ui/spinner';
+import { AirplaneLoader } from '@/components/ui/airplane-loader';
 import { useToast } from '@/components/ui/toast';
 import { formatDate, formatTime } from '@/lib/format';
 import { cn } from '@/lib/utils';
@@ -30,22 +31,22 @@ type Step = 'status' | 'generate' | 'review';
 
 function SummaryGrid({ summary }: { summary: PlanSummary }) {
   return (
-    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+    <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 md:grid-cols-4">
       <div className="rounded-lg border-[0.5px] border-slate-200 bg-slate-50 px-4 py-3">
         <p className="text-xl font-semibold text-slate-900">{summary.totalCandidates.toLocaleString()}</p>
         <p className="text-[12px] text-slate-500">Candidates considered</p>
       </div>
-      <div className="rounded-lg border-[0.5px] border-emerald-200 bg-emerald-50 px-4 py-3">
-        <p className="text-xl font-semibold text-emerald-700">{summary.assignedCount.toLocaleString()}</p>
-        <p className="text-[12px] text-emerald-700/80">Seated</p>
+      <div className="rounded-lg border-[0.5px] border-gold-200 bg-gold-50 px-4 py-3">
+        <p className="text-xl font-semibold text-gold-700">{summary.assignedCount.toLocaleString()}</p>
+        <p className="text-[12px] text-gold-700/80">Seated</p>
       </div>
       <div className="rounded-lg border-[0.5px] border-amber-200 bg-amber-50 px-4 py-3">
         <p className="text-xl font-semibold text-amber-700">{summary.unassignedCount.toLocaleString()}</p>
         <p className="text-[12px] text-amber-700/80">Overflow</p>
       </div>
-      <div className="rounded-lg border-[0.5px] border-brand-200 bg-brand-50 px-4 py-3">
-        <p className="text-xl font-semibold text-brand-700">{summary.sessionsUsed}</p>
-        <p className="text-[12px] text-brand-700/80">Sessions used</p>
+      <div className="rounded-lg border-[0.5px] border-purple-200 bg-purple-50 px-4 py-3">
+        <p className="text-xl font-semibold text-purple-700">{summary.sessionsUsed}</p>
+        <p className="text-[12px] text-purple-700/80">Sessions used</p>
       </div>
     </div>
   );
@@ -166,7 +167,12 @@ export default function SchedulePage() {
   const step: Step = status && status.status !== 'none' ? 'review' : 'generate';
 
   return (
-    <div>
+    <div className="relative">
+      {generating && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-white/90 backdrop-blur-sm">
+          <AirplaneLoader label="Generating schedule — seating candidates…" />
+        </div>
+      )}
       <PageHeader
         title="Scheduling engine"
         description="Automatic hall and seat allocation for the current exam window."
@@ -185,13 +191,13 @@ export default function SchedulePage() {
 
       {/* Status banner */}
       <Card className="mb-6">
-        <CardContent className="flex flex-wrap items-center justify-between gap-3">
+        <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-3">
             <div
               className={cn(
                 'flex h-10 w-10 items-center justify-center rounded-lg',
                 status?.status === 'confirmed'
-                  ? 'bg-emerald-50 text-emerald-600'
+                  ? 'bg-gold-50 text-gold-600'
                   : status?.status === 'draft'
                     ? 'bg-amber-50 text-amber-600'
                     : 'bg-slate-100 text-slate-400'
@@ -218,7 +224,7 @@ export default function SchedulePage() {
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {status?.status !== 'confirmed' && (
               <Button onClick={() => void generate()} disabled={generating || selected.size === 0}>
                 {generating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
@@ -245,11 +251,11 @@ export default function SchedulePage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="mb-4 flex items-center justify-between">
+              <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
               <p className="text-[13px] text-slate-600">
                 <span className="font-semibold text-slate-900">{selected.size}</span> of {sessions.length} sessions selected
               </p>
-              <div className="flex gap-2">
+              <div className="flex flex-wrap gap-2">
                 <Button variant="ghost" size="sm" onClick={() => setSelected(new Set(sessions.map((s) => s.id)))}>
                   Select all
                 </Button>
@@ -273,14 +279,14 @@ export default function SchedulePage() {
                     className={cn(
                       'flex items-center gap-3 rounded-lg border-[0.5px] px-4 py-3 text-left transition-colors',
                       active
-                        ? 'border-brand-600 bg-brand-50/70'
+                        ? 'border-purple-600 bg-purple-50/70'
                         : 'border-slate-200 hover:border-slate-300 hover:bg-slate-50'
                     )}
                   >
                     <div
                       className={cn(
                         'flex h-4 w-4 shrink-0 items-center justify-center rounded border-[0.5px]',
-                        active ? 'border-brand-600 bg-brand-600' : 'border-slate-300 bg-white'
+                        active ? 'border-purple-600 bg-purple-600' : 'border-slate-300 bg-white'
                       )}
                     >
                       {active && <CheckCircle2 className="h-3 w-3 text-white" />}
@@ -360,13 +366,14 @@ export default function SchedulePage() {
                           <span className="hidden w-24 sm:block">
                             <Progress
                               value={Math.round((g.candidates.length / g.hall.capacity) * 100)}
-                              indicatorClassName={g.candidates.length / g.hall.capacity > 0.9 ? 'bg-emerald-500' : 'bg-brand-600'}
+                              indicatorClassName={g.candidates.length / g.hall.capacity > 0.9 ? 'bg-gold-500' : 'bg-purple-600'}
                             />
                           </span>
                         </div>
                       </div>
                       <div className="overflow-hidden rounded-lg border-[0.5px] border-slate-200">
-                        <table className="w-full text-[13px]">
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-[13px]">
                           <thead className="bg-slate-50">
                             <tr>
                               <th className="px-3 py-2 text-left font-mono text-[11px] font-semibold uppercase text-slate-500">Seat</th>
@@ -377,13 +384,14 @@ export default function SchedulePage() {
                           <tbody>
                             {g.candidates.slice(0, 12).map((c) => (
                               <tr key={`${c.candidateId}:${c.seatNumber}`} className="border-t-[0.5px] border-slate-100">
-                                <td className="px-3 py-1.5 font-mono text-[12px] text-brand-700">{c.seatNumber}</td>
+                                <td className="px-3 py-1.5 font-mono text-[12px] text-purple-700">{c.seatNumber}</td>
                                 <td className="px-3 py-1.5 font-mono text-[12px] text-slate-600">{c.candidateId}</td>
                                 <td className="px-3 py-1.5 text-slate-800">{c.name}</td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
+                        </div>
                         {g.candidates.length > 12 && (
                           <p className="border-t-[0.5px] border-slate-100 px-3 py-2 text-[12px] text-slate-500">
                             …and {g.candidates.length - 12} more candidates
@@ -398,13 +406,13 @@ export default function SchedulePage() {
           </Card>
 
           {preview.status === 'confirmed' && (
-            <div className="flex items-start gap-3 rounded-lg border-[0.5px] border-emerald-200 bg-emerald-50 px-4 py-3 text-[13px] text-emerald-800">
+            <div className="flex items-start gap-3 rounded-lg border-[0.5px] border-gold-200 bg-gold-50 px-4 py-3 text-[13px] text-gold-800">
               <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
               <div>
                 <p className="font-semibold">Schedule confirmed</p>
                 <p>
                   Attendance sheets are now available in the{' '}
-                  <button onClick={() => router.push('/attendance')} className="font-medium underline hover:text-emerald-900">
+                  <button onClick={() => router.push('/attendance')} className="font-medium underline hover:text-gold-900">
                     Attendance sheets
                   </button>{' '}
                   section.
@@ -414,7 +422,7 @@ export default function SchedulePage() {
           )}
 
           {preview.status === 'draft' && (
-            <div className="flex justify-end gap-2">
+            <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
               <Button variant="outline" onClick={() => void generate()}>
                 <RefreshCw className="h-4 w-4" /> Regenerate
               </Button>

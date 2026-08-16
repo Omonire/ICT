@@ -14,17 +14,21 @@ export default function LandingReveal({ children }: { children: ReactNode }) {
     if (!el) return;
     const targets = Array.from(el.querySelectorAll<HTMLElement>('[data-reveal]'));
     const batch = ScrollTrigger.batch(targets, {
-      start: 'top 85%',
+      start: 'top 88%',
       once: true,
       onEnter: (batchEls) => {
-        gsap.to(batchEls, {
-          opacity: 1,
-          y: 0,
-          duration: 0.7,
-          stagger: 0.08,
-          ease: 'power3.out',
-          overwrite: true,
-        });
+        gsap.fromTo(
+          batchEls,
+          { opacity: 0, y: 24 },
+          {
+            opacity: 1,
+            y: 0,
+            duration: 0.7,
+            stagger: 0.08,
+            ease: 'power3.out',
+            overwrite: true,
+          }
+        );
       },
     });
     return () => {

@@ -93,6 +93,20 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
   const ds = AppDataSource;
   const started = Date.now();
 
+  // Ensure a superadmin always exists even if the DB is already seeded.
+  const userRepo = ds.getRepository(User);
+  const existingSuperadmin = await userRepo.findOne({ where: { role: UserRole.SUPERADMIN } });
+  if (!existingSuperadmin) {
+    const sa = userRepo.create({
+      id: genUuid(),
+      email: 'superadmin@examflow.edu.ng',
+      password: await bcrypt.hash('SuperAdmin123!', 10),
+      role: UserRole.SUPERADMIN,
+      name: 'Super Administrator',
+    });
+    await userRepo.save(sa);
+  }
+
   if (await isSeeded(ds)) {
     return {
       candidateCount: await ds.getRepository(Candidate).count(),
@@ -100,22 +114,28 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
     };
   }
 
-  const userRepo = ds.getRepository(User);
-  const admin = userRepo.create({
-    id: genUuid(),
-    email: 'admin@examflow.edu.ng',
-    password: await bcrypt.hash('Admin123!', 10),
-    role: UserRole.ADMIN,
-    name: 'System Administrator',
-  });
-  const operator = userRepo.create({
-    id: genUuid(),
-    email: 'operator@examflow.edu.ng',
-    password: await bcrypt.hash('Operator123!', 10),
-    role: UserRole.OPERATOR,
-    name: 'Operations Team',
-  });
-  await userRepo.save([admin, operator]);
+  let admin = await userRepo.findOne({ where: { email: 'admin@examflow.edu.ng' } });
+  if (!admin) {
+    admin = userRepo.create({
+      id: genUuid(),
+      email: 'admin@examflow.edu.ng',
+      password: await bcrypt.hash('Admin123!', 10),
+      role: UserRole.ADMIN,
+      name: 'System Administrator',
+    });
+    await userRepo.save(admin);
+  }
+  let operator = await userRepo.findOne({ where: { email: 'operator@examflow.edu.ng' } });
+  if (!operator) {
+    operator = userRepo.create({
+      id: genUuid(),
+      email: 'operator@examflow.edu.ng',
+      password: await bcrypt.hash('Operator123!', 10),
+      role: UserRole.OPERATOR,
+      name: 'Operations Team',
+    });
+    await userRepo.save(operator);
+  }
 
   const groupRepo = ds.getRepository(CareerGroup);
   const groups = await groupRepo.save(

@@ -10,6 +10,6 @@ import { careerGroupCreateSchema } from '../schemas';
 const router = Router();
 
 router.get('/', listCareerGroups);
-router.post('/', requireRole('admin'), validateBody(careerGroupCreateSchema), createCareerGroup);
+router.post('/', requireRole('superadmin', 'admin'), validateBody(careerGroupCreateSchema), createCareerGroup);
 
 export default router;

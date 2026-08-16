@@ -26,7 +26,7 @@ export function Pagination({ page, totalPages, total, pageSize, onPageChange }: 
   });
 
   return (
-    <div className="flex items-center justify-between gap-4 border-t-[0.5px] border-slate-100 px-4 py-3">
+    <div className="flex flex-col items-center justify-between gap-3 border-t-[0.5px] border-slate-100 px-4 py-3 sm:flex-row sm:gap-4">
       <p className="text-[12px] text-slate-500">
         Showing <span className="font-mono font-medium text-slate-700">{from}–{to}</span> of{' '}
         <span className="font-mono font-medium text-slate-700">{total.toLocaleString()}</span>
@@ -48,7 +48,7 @@ export function Pagination({ page, totalPages, total, pageSize, onPageChange }: 
                 className={cn(
                   'h-8 w-8 rounded-md text-[13px] font-medium transition-colors',
                   p === page
-                    ? 'bg-brand-600 text-white'
+                    ? 'bg-purple-600 text-white'
                     : 'text-slate-600 hover:bg-slate-100'
                 )}
               >

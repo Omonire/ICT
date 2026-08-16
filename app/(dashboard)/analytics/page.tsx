@@ -96,7 +96,7 @@ export default function AnalyticsPage() {
         description="Load, coverage and capacity overview across halls, sessions and programmes."
       />
 
-      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         {stats.map(({ label, value, icon: Icon, sub }) => (
           <Card key={label}>
             <div className="p-5">
@@ -111,7 +111,7 @@ export default function AnalyticsPage() {
         ))}
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <div className="mt-6 grid gap-6 grid-cols-1 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Candidates by status</CardTitle>
@@ -165,12 +165,12 @@ export default function AnalyticsPage() {
         </Card>
       </div>
 
-      <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      <div className="mt-6 grid gap-6 grid-cols-1 lg:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Programme coverage</CardTitle>
             <p className="text-[12px] text-slate-400">
-              <Link href="/candidates" className="text-brand-600 hover:underline">
+              <Link href="/candidates" className="text-purple-600 hover:underline">
                 Manage candidates
               </Link>
             </p>

@@ -18,16 +18,16 @@ const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 
 const router = Router();
 
 router.get('/', validateQuery(listQuerySchema), listCandidates);
-router.post('/', requireRole('admin', 'operator'), validateBody(candidateCreateSchema), createCandidate);
+router.post('/', requireRole('superadmin', 'admin', 'operator'), validateBody(candidateCreateSchema), createCandidate);
 router.post(
   '/import/preview',
-  requireRole('admin', 'operator'),
+  requireRole('superadmin', 'admin', 'operator'),
   upload.single('file'),
   importPreview
 );
-router.post('/import/confirm', requireRole('admin', 'operator'), importConfirm);
+router.post('/import/confirm', requireRole('superadmin', 'admin', 'operator'), importConfirm);
 router.get('/:id', getCandidate);
-router.put('/:id', requireRole('admin', 'operator'), validateBody(candidateUpdateSchema), updateCandidate);
-router.delete('/:id', requireRole('admin'), deleteCandidate);
+router.put('/:id', requireRole('superadmin', 'admin', 'operator'), validateBody(candidateUpdateSchema), updateCandidate);
+router.delete('/:id', requireRole('superadmin', 'admin'), deleteCandidate);
 
 export default router;

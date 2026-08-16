@@ -12,8 +12,8 @@ import { sessionCreateSchema } from '../schemas';
 const router = Router();
 
 router.get('/', listSessions);
-router.post('/', requireRole('admin', 'operator'), validateBody(sessionCreateSchema), createSession);
+router.post('/', requireRole('superadmin', 'admin', 'operator'), validateBody(sessionCreateSchema), createSession);
 router.get('/:id', getSession);
-router.delete('/:id', requireRole('admin'), deleteSession);
+router.delete('/:id', requireRole('superadmin', 'admin'), deleteSession);
 
 export default router;

@@ -25,11 +25,10 @@ export const entities = [
 
 const base = {
   entities,
-  // synchronize is intentionally enabled for the initial schema build.
-  // In production switch to DB_TYPE=postgres and enable migrations below.
-  synchronize: true,
   logging: false,
 };
+
+const synchronize = !env.isProd;
 
 export const AppDataSource =
   env.dbType === 'sqlite'
@@ -37,6 +36,7 @@ export const AppDataSource =
         ...base,
         type: 'sqlite',
         database: env.dbFile,
+        synchronize,
       })
     : new DataSource({
         ...base,
@@ -46,7 +46,7 @@ export const AppDataSource =
         username: env.dbUser,
         password: env.dbPassword,
         database: env.dbName,
-        synchronize: true,
+        synchronize,
       });
 
 export async function initDatabase(): Promise<DataSource> {

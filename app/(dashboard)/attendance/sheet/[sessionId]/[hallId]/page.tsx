@@ -69,7 +69,7 @@ export default function AttendanceSheetPage() {
 
       {/* Printable exam sheet */}
       <div className="mx-auto max-w-[900px] rounded-[12px] border-[0.5px] border-slate-200 bg-white px-10 py-8 shadow-card">
-        <div className="mb-6 flex items-center justify-between border-b-[3px] border-brand-600 pb-4">
+        <div className="mb-6 flex items-center justify-between border-b-[3px] border-purple-600 pb-4">
           <div>
             <h2 className="text-lg font-bold tracking-tight text-slate-900">Federal University of Technology</h2>
             <p className="text-[12px] text-slate-500">Examination & Records Unit — CBT Attendance Sheet</p>
@@ -109,7 +109,7 @@ export default function AttendanceSheetPage() {
             {sheet.rows.map((row) => (
               <tr key={`${row.candidateId}:${row.seatNumber}`} className="border-b-[0.5px] border-slate-200">
                 <td className="px-3 py-2 text-center text-slate-500">{row.index}</td>
-                <td className="px-3 py-2 font-mono font-semibold text-brand-700">{row.seatNumber}</td>
+                <td className="px-3 py-2 font-mono font-semibold text-purple-700">{row.seatNumber}</td>
                 <td className="px-3 py-2 font-mono text-slate-700">{row.candidateId}</td>
                 <td className="px-3 py-2 text-slate-800">{row.name}</td>
                 <td className="px-3 py-2 text-slate-600">{row.careerGroup}</td>

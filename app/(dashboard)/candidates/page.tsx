@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
@@ -195,7 +195,7 @@ export default function CandidatesPage() {
       />
 
       <Card>
-        <div className="flex flex-wrap items-center gap-3 border-b-[0.5px] border-slate-100 px-4 py-3">
+        <div className="flex flex-col gap-3 border-b-[0.5px] border-slate-100 px-4 py-3 sm:flex-row sm:items-center sm:flex-wrap">
           <SearchInput
             value={query.search}
             onChange={(v) => setQueryDebounced({ search: v })}
@@ -265,7 +265,7 @@ export default function CandidatesPage() {
               <TableBody>
                 {data.data.map((c) => (
                   <TableRow key={c.id}>
-                    <TableCell className="font-mono text-[12px] text-brand-700">{c.id}</TableCell>
+                    <TableCell className="font-mono text-[12px] text-purple-700">{c.id}</TableCell>
                     <TableCell>
                       <p className="font-medium text-slate-800">{c.name}</p>
                       <p className="font-mono text-[11px] text-slate-400">{c.email}</p>

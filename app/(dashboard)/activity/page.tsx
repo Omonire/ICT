@@ -65,7 +65,7 @@ export default function ActivityPage() {
       />
 
       <Card>
-        <div className="flex items-center justify-between border-b-[0.5px] border-slate-100 px-5 py-4">
+        <div className="flex flex-col gap-3 border-b-[0.5px] border-slate-100 px-5 py-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 text-[13px] font-medium text-slate-600">
             <History className="h-4 w-4 text-slate-400" />
             {data ? `${data.meta.total} events` : 'Loading…'}
@@ -76,7 +76,7 @@ export default function ActivityPage() {
               setAction(e.target.value);
               setPage(1);
             }}
-            className="h-9 w-56"
+            className="h-9 w-full sm:w-56"
           >
             <option value="">All actions</option>
             {Object.entries(ACTION_LABELS)
@@ -115,7 +115,7 @@ export default function ActivityPage() {
                   {data.data.map((entry) => (
                     <tr key={entry.id} className="hover:bg-slate-50/60">
                       <td className="whitespace-nowrap px-5 py-3">
-                        <span className="rounded-md bg-brand-50 px-2 py-0.5 text-[12px] font-medium text-brand-700">
+                        <span className="rounded-md bg-purple-50 px-2 py-0.5 text-[12px] font-medium text-purple-700">
                           {actionLabel(entry)}
                         </span>
                         {entry.entityType && (

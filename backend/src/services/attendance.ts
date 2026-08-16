@@ -105,7 +105,7 @@ export function buildSheetHtml(sheet: AttendanceSheetData): string {
   * { box-sizing: border-box; }
   body { font-family: Inter, ui-sans-serif, system-ui, -apple-system, sans-serif; color: #0f172a; margin: 40px; font-size: 13px; }
   .mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
-  .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #0d9488; padding-bottom: 16px; margin-bottom: 20px; }
+  .header { display: flex; align-items: center; justify-content: space-between; border-bottom: 3px solid #5B2C6F; padding-bottom: 16px; margin-bottom: 20px; }
   .brand h1 { margin: 0; font-size: 20px; letter-spacing: 0.02em; color: #0f172a; }
   .brand p { margin: 2px 0 0; color: #64748b; font-size: 12px; }
   .meta { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 20px; }
@@ -192,7 +192,7 @@ export async function buildSheetPdf(sheet: AttendanceSheetData): Promise<Buffer>
       .text('Examination & Records Unit — CBT Attendance Sheet', { align: 'center' })
       .moveDown(0.5);
     doc
-      .strokeColor('#0d9488')
+      .strokeColor('#5B2C6F')
       .lineWidth(2)
       .moveTo(40, doc.y)
       .lineTo(555, doc.y)
@@ -214,7 +214,7 @@ export async function buildSheetPdf(sheet: AttendanceSheetData): Promise<Buffer>
         .roundedRect(x + i * (colW + 12), y, colW, 46, 6)
         .fill('#f8fafc');
       doc
-        .fillColor('#0d9488')
+        .fillColor('#5B2C6F')
         .font('Helvetica-Bold')
         .fontSize(7)
         .text(label, x + i * (colW + 12) + 8, y + 8, { width: colW - 16 })

@@ -12,8 +12,8 @@ import { hallCreateSchema, hallUpdateSchema } from '../schemas';
 const router = Router();
 
 router.get('/', listHalls);
-router.post('/', requireRole('admin'), validateBody(hallCreateSchema), createHall);
+router.post('/', requireRole('superadmin', 'admin'), validateBody(hallCreateSchema), createHall);
 router.get('/:id', getHall);
-router.put('/:id', requireRole('admin'), validateBody(hallUpdateSchema), updateHall);
+router.put('/:id', requireRole('superadmin', 'admin'), validateBody(hallUpdateSchema), updateHall);
 
 export default router;

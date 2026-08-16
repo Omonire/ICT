@@ -15,7 +15,7 @@ export const env = {
   port: Number(process.env.PORT ?? 4000),
   isProd: (process.env.NODE_ENV ?? 'development') === 'production',
 
-  dbType: (process.env.DB_TYPE ?? 'postgres') as 'postgres' | 'sqlite',
+  dbType: (process.env.DB_TYPE ?? 'sqlite') as 'postgres' | 'sqlite',
   dbHost: process.env.DB_HOST ?? 'localhost',
   dbPort: Number(process.env.DB_PORT ?? 5432),
   dbUser: process.env.DB_USER ?? 'postgres',

@@ -112,7 +112,7 @@ export default function ImportPage() {
         <Card>
           <div className="p-6">
             <div className="mb-5 flex items-start gap-3 rounded-lg border-[0.5px] border-slate-200 bg-slate-50 px-4 py-3">
-              <FileSpreadsheet className="mt-0.5 h-4 w-4 shrink-0 text-brand-600" />
+              <FileSpreadsheet className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
               <div className="text-[13px] leading-relaxed text-slate-600">
                 Your CSV needs these columns:{' '}
                 <span className="font-mono text-[12px] text-slate-800">{REQUIRED_COLUMNS.join(', ')}</span>.
@@ -134,10 +134,10 @@ export default function ImportPage() {
                 void handleFile(e.dataTransfer.files[0]);
               }}
               className={`flex w-full flex-col items-center justify-center gap-3 rounded-xl border-2 border-dashed px-6 py-14 transition-colors ${
-                dragOver ? 'border-brand-600 bg-brand-50/60' : 'border-slate-300 bg-slate-50/50 hover:border-brand-500 hover:bg-brand-50/30'
+                dragOver ? 'border-purple-600 bg-purple-50/60' : 'border-slate-300 bg-slate-50/50 hover:border-purple-500 hover:bg-purple-50/30'
               }`}
             >
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-brand-50 text-brand-600">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-purple-50 text-purple-600">
                 {uploading ? <Spinner className="h-5 w-5" /> : <UploadCloud className="h-6 w-6" />}
               </div>
               <div className="text-center">
@@ -145,7 +145,7 @@ export default function ImportPage() {
                   {uploading ? 'Parsing file…' : 'Drop your CSV here'}
                 </p>
                 <p className="mt-1 text-[13px] text-slate-500">
-                  or <span className="font-medium text-brand-700">browse</span> your computer · max 10 MB
+                  or <span className="font-medium text-purple-700">browse</span> your computer · max 10 MB
                 </p>
               </div>
             </button>
@@ -195,9 +195,9 @@ export default function ImportPage() {
             </div>
 
             <div className="grid grid-cols-3 gap-3">
-              <div className="rounded-lg border-[0.5px] border-emerald-200 bg-emerald-50 px-4 py-3">
-                <p className="text-xl font-semibold text-emerald-700">{preview.validCount}</p>
-                <p className="text-[12px] text-emerald-700/80">Valid rows</p>
+              <div className="rounded-lg border-[0.5px] border-gold-200 bg-gold-50 px-4 py-3">
+                <p className="text-xl font-semibold text-gold-700">{preview.validCount}</p>
+                <p className="text-[12px] text-gold-700/80">Valid rows</p>
               </div>
               <div className="rounded-lg border-[0.5px] border-amber-200 bg-amber-50 px-4 py-3">
                 <p className="text-xl font-semibold text-amber-700">{preview.duplicateCount}</p>
@@ -277,12 +277,12 @@ export default function ImportPage() {
       {step === 'done' && result && (
         <Card>
           <div className="flex flex-col items-center px-6 py-14 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50">
-              <CheckCircle2 className="h-7 w-7 text-emerald-600" />
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-gold-50">
+              <CheckCircle2 className="h-7 w-7 text-gold-600" />
             </div>
             <h2 className="mt-4 text-lg font-semibold text-slate-900">Import complete</h2>
             <p className="mt-1 max-w-sm text-[13px] text-slate-500">
-              <span className="font-semibold text-emerald-700">{result.imported}</span> candidates added to the
+              <span className="font-semibold text-gold-700">{result.imported}</span> candidates added to the
               register. {result.skipped > 0 && <span>{result.skipped} rows skipped.</span>}
             </p>
             {result.errors.length > 0 && (

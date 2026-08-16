@@ -3,8 +3,10 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { env } from './config/env';
 import { authenticate } from './middleware/auth';
+import { maintenanceMiddleware } from './middleware/maintenance';
 import { errorHandler, notFoundHandler } from './middleware/error';
 import authRoutes from './routes/auth';
+import adminRoutes from './routes/admin';
 import candidateRoutes from './routes/candidates';
 import hallRoutes from './routes/halls';
 import sessionRoutes from './routes/sessions';
@@ -40,6 +42,8 @@ export function createApp(): Express {
 
   // Everything below requires an authenticated session.
   app.use('/api', authenticate);
+  app.use('/api', maintenanceMiddleware);
+  app.use('/api/admin', adminRoutes);
   app.use('/api/candidates', candidateRoutes);
   app.use('/api/halls', hallRoutes);
   app.use('/api/sessions', sessionRoutes);

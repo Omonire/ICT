@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useCallback, useEffect, useState } from 'react';
 import Link from 'next/link';
@@ -129,7 +129,7 @@ export default function HallDetailPage() {
               <span className="h-2.5 w-2.5 rounded-sm bg-slate-200" /> Available
             </span>
             <span className="flex items-center gap-1.5">
-              <span className="h-2.5 w-2.5 rounded-sm bg-brand-600" /> Occupied
+              <span className="h-2.5 w-2.5 rounded-sm bg-purple-600" /> Occupied
             </span>
             <span className="flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-sm border border-dashed border-slate-400" /> Click for details
@@ -155,8 +155,8 @@ export default function HallDetailPage() {
                     className={cn(
                       'group flex aspect-square items-center justify-center rounded-md border-[0.5px] transition-all',
                       occupiedSeat
-                        ? 'border-brand-700 bg-brand-600 text-brand-50 shadow-sm hover:ring-2 hover:ring-brand-500'
-                        : 'border-slate-200 bg-slate-50 text-slate-400 hover:border-brand-300 hover:bg-brand-50 hover:text-brand-700'
+                        ? 'border-purple-700 bg-purple-600 text-purple-50 shadow-sm hover:ring-2 hover:ring-purple-500'
+                        : 'border-slate-200 bg-slate-50 text-slate-400 hover:border-purple-300 hover:bg-purple-50 hover:text-purple-700'
                     )}
                   >
                     <span className="font-mono text-[9px] font-medium sm:text-[10px]">
@@ -179,7 +179,7 @@ export default function HallDetailPage() {
           selectedSeat?.candidateId ? (
             <Link
               href={`/candidates?search=${encodeURIComponent(selectedSeat.candidateId)}`}
-              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-brand-600 px-4 text-sm font-medium text-white hover:bg-brand-700"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-purple-600 px-4 text-sm font-medium text-white hover:bg-purple-700"
             >
               View candidate record
             </Link>
@@ -192,7 +192,7 @@ export default function HallDetailPage() {
               <div
                 className={cn(
                   'flex h-12 w-12 items-center justify-center rounded-lg',
-                  selectedSeat.status === 'occupied' ? 'bg-brand-600 text-white' : 'bg-slate-100 text-slate-400'
+                  selectedSeat.status === 'occupied' ? 'bg-purple-600 text-white' : 'bg-slate-100 text-slate-400'
                 )}
               >
                 <Armchair className="h-6 w-6" />
@@ -210,7 +210,7 @@ export default function HallDetailPage() {
                 ) : seatCandidate ? (
                   <div className="space-y-1.5 text-[13px]">
                     <p className="font-semibold text-slate-900">{seatCandidate.name}</p>
-                    <p className="font-mono text-[12px] text-brand-700">{seatCandidate.id}</p>
+                    <p className="font-mono text-[12px] text-purple-700">{seatCandidate.id}</p>
                     <p className="text-slate-600">{seatCandidate.careerGroup?.name ?? '—'}</p>
                     <p className="font-mono text-[12px] text-slate-500">{seatCandidate.matricNo ?? ''}</p>
                     <p className="text-slate-500">

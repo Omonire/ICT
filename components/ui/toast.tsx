@@ -30,9 +30,9 @@ interface ToastContextValue {
 const ToastContext = createContext<ToastContextValue | null>(null);
 
 const ICONS: Record<ToastVariant, ReactNode> = {
-  success: <CheckCircle2 className="h-4 w-4 text-emerald-500" />,
+  success: <CheckCircle2 className="h-4 w-4 text-gold-500" />,
   error: <AlertTriangle className="h-4 w-4 text-red-500" />,
-  info: <Info className="h-4 w-4 text-brand-600" />,
+  info: <Info className="h-4 w-4 text-purple-600" />,
 };
 
 export function ToastProvider({ children }: { children: ReactNode }) {
@@ -70,7 +70,7 @@ export function ToastProvider({ children }: { children: ReactNode }) {
             className={cn(
               'pointer-events-auto flex items-start gap-3 rounded-lg border-[0.5px] bg-white px-4 py-3 shadow-card-hover animate-toast-in',
               t.variant === 'error' && 'border-red-200',
-              t.variant === 'success' && 'border-emerald-200',
+              t.variant === 'success' && 'border-gold-200',
               t.variant === 'info' && 'border-slate-200'
             )}
             role="status"

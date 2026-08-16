@@ -21,6 +21,7 @@ backend/dist/
 .env.local
 .env.production
 .env*.local
+.env.development
 
 # typescript
 *.tsbuildinfo
@@ -29,7 +30,8 @@ backend/dist/
 uploads/
 tmp/
 
-# stray root-level sqlite (canonical demo db lives in backend/data/)
+# SQLite data (use Postgres in production)
+backend/data/
 /data/
 
 # test / coverage

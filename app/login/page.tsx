@@ -46,14 +46,14 @@ export default function LoginPage() {
         className="pointer-events-none absolute inset-0 opacity-20"
         style={{
           backgroundImage:
-            'linear-gradient(rgba(13,148,136,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(13,148,136,0.12) 1px, transparent 1px)',
+            'linear-gradient(rgba(91,44,111,0.12) 1px, transparent 1px), linear-gradient(90deg, rgba(91,44,111,0.12) 1px, transparent 1px)',
           backgroundSize: '44px 44px',
           maskImage: 'radial-gradient(ellipse 60% 60% at 50% 40%, black, transparent)',
         }}
       />
       <div className="relative w-full max-w-sm">
         <Link href="/" className="mb-8 flex items-center justify-center gap-2">
-          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-brand-600 text-white">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-purple-600 text-white">
             <CalendarCheck2 className="h-5 w-5" />
           </div>
           <span className="text-lg font-semibold tracking-tight text-white">ExamFlow</span>
@@ -115,7 +115,7 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <div className="mt-6 rounded-lg border-[0.5px] border-brand-200 bg-brand-50 px-3 py-3 text-[12px] leading-relaxed text-brand-800">
+          <div className="mt-6 rounded-lg border-[0.5px] border-purple-200 bg-purple-50 px-3 py-3 text-[12px] leading-relaxed text-purple-800">
             <p className="font-semibold">Demo credentials</p>
             <p className="mt-1 font-mono">admin@examflow.edu.ng / Admin123!</p>
             <p className="font-mono">operator@examflow.edu.ng / Operator123!</p>
@@ -123,7 +123,7 @@ export default function LoginPage() {
         </div>
 
         <p className="mt-6 text-center text-[12px] text-slate-500">
-          <Link href="/" className="hover:text-brand-400">← Back to the landing page</Link>
+          <Link href="/" className="hover:text-purple-400">← Back to the landing page</Link>
         </p>
       </div>
     </div>

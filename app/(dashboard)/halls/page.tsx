@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -24,7 +24,7 @@ function HallCard({ hall, onEdit }: { hall: Hall; onEdit: () => void }) {
       className="card-surface card-surface-hover group flex flex-col p-5 text-left"
     >
       <div className="flex items-start justify-between">
-        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-50 text-slate-500 transition-colors group-hover:bg-brand-50 group-hover:text-brand-700">
+        <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-slate-50 text-slate-500 transition-colors group-hover:bg-purple-50 group-hover:text-purple-700">
           <Building2 className="h-5 w-5" />
         </div>
         <StatusBadge status={hall.status} />
@@ -40,12 +40,12 @@ function HallCard({ hall, onEdit }: { hall: Hall; onEdit: () => void }) {
         </div>
         <div className="h-2 w-full overflow-hidden rounded-full bg-slate-100">
           <div
-            className="h-full rounded-full bg-brand-600 transition-all duration-300"
+            className="h-full rounded-full bg-purple-600 transition-all duration-300"
             style={{ width: `${utilization}%` }}
           />
         </div>
       </div>
-      <div className="mt-4 flex items-center gap-1.5 text-[12px] font-medium text-brand-700">
+      <div className="mt-4 flex items-center gap-1.5 text-[12px] font-medium text-purple-700">
         <MapPin className="h-3.5 w-3.5" /> Open seat map
       </div>
       <div className="mt-2">

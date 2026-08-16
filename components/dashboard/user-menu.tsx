@@ -19,7 +19,7 @@ export function UserMenu({ user }: { user: { email: string; name: string | null;
         onClick={() => setOpen((o) => !o)}
         className="flex items-center gap-2 rounded-lg px-1.5 py-1 transition-colors hover:bg-slate-100"
       >
-        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand-600 text-[12px] font-semibold text-white">
+        <div className="flex h-8 w-8 items-center justify-center rounded-full bg-purple-600 text-[12px] font-semibold text-white">
           {initials(user.name ?? user.email)}
         </div>
         <div className="hidden text-left sm:block">
