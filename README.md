@@ -1,53 +1,72 @@
-# ExamFlow — CBT Examination Scheduling & Management
+# ExamFlow
 
-A full-stack platform for planning, scheduling, and managing university **Computer-Based Test (CBT)** examinations. Import thousands of candidates via CSV, define halls and exam sessions, let the scheduling engine auto-assign every candidate to a conflict-free seat, and produce print-ready attendance sheets (PDF and HTML).
+> A modern, full-stack CBT examination scheduling and management platform built for university exam offices.
 
-Built with **Next.js 14 (App Router) + TypeScript + Tailwind CSS** on the frontend and **Express 4 + TypeORM** on the backend.
+ExamFlow takes the headache out of university exam scheduling. Import thousands of candidates from a CSV, define your halls and sessions, and let the engine handle the rest — assigning every student to a conflict-free seat automatically. When it's done, download print-ready attendance sheets per hall, per session.
 
----
-
-## Features
-
-- **Landing Page** — GSAP scroll-animated hero with canvas-drawn seat-map visualization, animated counters, workflow pipeline, and trust marquee.
-- **Candidate Management** — Searchable, sortable, paginated table with add/edit/delete. CSV bulk import with per-row validation, rollback on failure, and duplicate detection.
-- **Hall & Seat Registry** — Create halls with capacity, auto-generated seat maps (`A-001`, `A-002`, ...), live seat-map viewer per hall with color-coded status.
-- **Session Management** — Define exam slots with date, start/end times.
-- **Scheduling Engine** — Conflict-free seat assignment with career-line packing, capacity awareness, and explicit overflow reporting. See [Scheduling Algorithm](docs/scheduling-algorithm.md).
-- **Attendance Sheets** — Per-hall/per-session printable sheets with PDF download (server-side PDFKit) and HTML view.
-- **Analytics Dashboard** — Candidate status, programme coverage, hall utilization, and session load charts (Recharts).
-- **Activity Log** — Full audit trail of every system action.
-- **Theme System** — Light, dark, and purple themes with localStorage persistence.
-- **Role-Based Access Control** — Superadmin, admin, operator, and viewer roles with JWT httpOnly cookie auth.
-- **Maintenance Mode** — Toggle to block non-admin access during system updates.
-- **Responsive Design** — Mobile-friendly dashboard with collapsible sidebar and drawer navigation.
+No more spreadsheets. No more manual seat assignments. No more double-bookings.
 
 ---
 
-## Quick Start
+## What It Does
+
+**Import candidates in bulk.** Upload a CSV with student names, emails, matric numbers, and career groups. ExamFlow validates every row, flags errors, detects duplicates, and lets you preview everything before committing.
+
+**Manage halls and seats.** Register exam halls with capacity limits. ExamFlow auto-generates seat maps (`A-001`, `A-002`, ..., `B-001`, ...) and shows a live color-coded seat map for each hall.
+
+**Define exam sessions.** Create time slots with dates and durations. Each session represents a block of exams that candidates can be assigned to.
+
+**Let the engine schedule.** One click generates the entire schedule. The engine assigns candidates to seats across halls and sessions with zero conflicts. It packs by career group so each programme fills halls contiguously. If demand exceeds supply, overflow is reported explicitly — no silent dropouts.
+
+**Print attendance sheets.** Generate per-hall, per-session attendance sheets. Download as PDF (A4, formatted with PDFKit) or open as a printable HTML page.
+
+**Track everything.** Full analytics dashboard with charts for candidate status, programme coverage, hall utilization, and session load. Every action in the system is logged in the activity trail.
+
+---
+
+## How It Works
+
+```
+Import CSV → Define Halls → Create Sessions → Generate Schedule → Download Sheets
+```
+
+1. **Import** — Upload candidate CSV, review validation, confirm import
+2. **Halls** — Register halls, auto-generate seats
+3. **Sessions** — Create exam time slots
+4. **Schedule** — Engine assigns all candidates to seats (no conflicts, capacity-aware)
+5. **Attendance** — Generate and download PDF/HTML attendance sheets per hall
+
+---
+
+## Tech Stack
+
+- **Frontend** — Next.js 14, React 18, TypeScript, Tailwind CSS, GSAP animations, Recharts charts
+- **Backend** — Express 4, TypeORM, JWT auth (httpOnly cookies), Zod validation, PDFKit for PDFs
+- **Database** — SQLite (zero-config demo) or PostgreSQL (production)
+
+---
+
+## Getting Started
 
 ### Prerequisites
 
-- **Node.js** >= 18
-- **npm** >= 9
+- Node.js 18+
+- npm 9+
 
-### Installation & Development
+### Install & Run
 
 ```bash
-# Clone the repository
 git clone https://github.com/Omonire/ICT.git
 cd ICT
-
-# Install all dependencies (monorepo workspaces)
 npm install
-
-# Seed demo data (520 candidates, 5 halls, 12 sessions, 5 career groups, 3 users)
 npm run seed
-
-# Start development servers
-npm run dev          # API on :4000, web on :3000
+npm run dev
 ```
 
-Open **http://localhost:3000** and sign in:
+- **Frontend:** http://localhost:3000
+- **API:** http://localhost:4000
+
+### Demo Accounts
 
 | Role       | Email                      | Password       |
 | ---------- | -------------------------- | -------------- |
@@ -57,150 +76,107 @@ Open **http://localhost:3000** and sign in:
 
 ---
 
-## Tech Stack
+## Deploy
 
-| Layer      | Technology                                                                 |
-| ---------- | -------------------------------------------------------------------------- |
-| **Frontend** | Next.js 14 (App Router), React 18, TypeScript, Tailwind CSS, GSAP, Recharts, Lucide Icons |
-| **Backend**  | Express 4, TypeORM, JWT (httpOnly cookies), Zod validation, multer, PDFKit |
-| **Database** | SQLite (zero-config default) / PostgreSQL (production via `DB_TYPE=postgres`) |
+### Docker (Recommended)
+
+```bash
+# Create .env files
+cp .env.example .env
+cp backend/.env.example backend/.env
+# Edit with production values (strong JWT secret, Postgres credentials, COOKIE_SECURE=true)
+
+docker-compose up -d
+docker-compose exec api node dist/index.js --seed   # seed once
+```
+
+### Manual Server
+
+```bash
+npm install
+cd backend && npx tsc && cd ..
+npx next build
+pm2 start backend/dist/index.js --name examflow-api
+pm2 start "npx next start -p 3000" --name examflow-web
+```
+
+### Vercel (Frontend Only)
+
+1. Push to GitHub
+2. Import on [vercel.com](https://vercel.com)
+3. Set `NEXT_PUBLIC_API_URL` to your backend URL
+4. Deploy
+
+### Railway (Full Stack)
+
+1. Create project on [railway.app](https://railway.app)
+2. Add PostgreSQL service
+3. Connect your GitHub repo
+4. Set environment variables
+5. Auto-deploys on push
+
+---
+
+## Environment Variables
+
+```bash
+# Backend
+PORT=4000
+NODE_ENV=production
+DB_TYPE=postgres              # or sqlite for demo
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=examflow
+DB_PASSWORD=your-password
+DB_NAME=examflow
+JWT_SECRET=your-64-char-random-secret
+JWT_EXPIRES_IN=7d
+COOKIE_SECURE=true
+SEED_ON_STARTUP=false
+
+# Frontend
+NEXT_PUBLIC_API_URL=https://api.yourdomain.com/api
+```
 
 ---
 
 ## Project Structure
 
 ```
-ICT/
-├── app/                        # Next.js App Router
-│   ├── page.tsx                # Landing page (GSAP animated)
-│   ├── login/                  # Authentication page
-│   └── (dashboard)/            # Dashboard route group (protected)
-│       ├── dashboard/          # Operations overview
-│       ├── candidates/         # Candidate CRUD + CSV import
-│       ├── halls/              # Hall registry + seat maps
-│       ├── sessions/           # Session management
-│       ├── schedule/           # Scheduling engine UI
-│       ├── attendance/         # Attendance sheets + PDF
-│       ├── analytics/          # Charts & statistics
-│       ├── activity/           # Audit trail
-│       └── superadmin/         # System controls
-├── components/
-│   ├── auth/                   # Auth context & provider
-│   ├── dashboard/              # App shell, sidebar, search, user menu
-│   ├── landing/                # 14 landing page sections
-│   └── ui/                     # 22 reusable UI primitives
-├── lib/
-│   ├── api.ts                  # HTTP client (fetch wrapper)
-│   ├── types.ts                # TypeScript interfaces
-│   ├── use-api.ts              # Data fetching hook
-│   ├── format.ts               # Date/enum formatting utilities
-│   └── utils.ts                # cn() class merge utility
-├── hooks/
-│   └── use-in-view.ts          # IntersectionObserver hook
-├── backend/
-│   ├── src/
-│   │   ├── index.ts            # Server bootstrap
-│   │   ├── app.ts              # Express app factory
-│   │   ├── config/             # Environment + TypeORM DataSource
-│   │   ├── entities/           # 9 TypeORM models
-│   │   ├── schemas/            # Zod validation schemas
-│   │   ├── routes/             # 11 route modules
-│   │   ├── controllers/        # 9 controller modules
-│   │   ├── services/           # Scheduler, CSV import, attendance, seeding
-│   │   ├── middleware/         # Auth, roles, validation, error handling
-│   │   └── utils/              # IDs, errors, pagination
-│   └── data/                   # SQLite database file
-└── docs/                       # Documentation
+app/                    Next.js pages (landing, login, dashboard)
+components/             UI primitives + dashboard + landing sections
+lib/                    API client, types, formatting, hooks
+backend/src/
+  entities/             9 TypeORM models (User, Candidate, Hall, Seat, Session, ...)
+  routes/               11 route modules
+  controllers/          9 controller modules
+  services/             Scheduler engine, CSV import, attendance PDF, seeding
+  middleware/           JWT auth, role guard, validation, error handling
+data/                   SQLite database (auto-created)
+docs/                   Full documentation
 ```
 
 ---
 
-## Available Scripts
+## API at a Glance
 
-| Command               | Description                                       |
-| --------------------- | ------------------------------------------------- |
-| `npm run dev`         | Start API (:4000) + web (:3000) in watch mode     |
-| `npm run dev:web`     | Start only the Next.js dev server                 |
-| `npm run dev:api`     | Start only the backend API server                 |
-| `npm run build`       | Production build (backend + frontend)             |
-| `npm run start`       | Production start (API + web)                      |
-| `npm run seed`        | Seed/replace demo data (idempotent)               |
-| `npm run typecheck`   | Type-check backend + frontend                     |
+41 RESTful endpoints under `/api` — auth, candidate CRUD + CSV import, halls + seats, sessions, scheduling engine (preview/generate/confirm/clear), attendance sheets (PDF/HTML), analytics, activity log, and admin controls.
+
+Full reference: [docs/API.md](docs/API.md)
 
 ---
 
-## Environment Variables
+## Documentation
 
-Copy `.env.example` to `.env` (root) and `backend/.env.example` to `backend/.env`:
-
-```bash
-# Backend
-PORT=4000
-NODE_ENV=development
-DB_TYPE=sqlite                  # or "postgres" for production
-DB_HOST=localhost
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=postgres
-DB_NAME=examflow
-DB_FILE=./data/examflow.sqlite
-JWT_SECRET=change-me-to-a-long-random-string
-JWT_EXPIRES_IN=7d
-COOKIE_SECURE=false
-SEED_ON_STARTUP=true
-
-# Frontend (set in .env.local or as environment variable)
-NEXT_PUBLIC_API_URL=http://localhost:4000/api
-```
-
----
-
-## API Overview
-
-The backend exposes **41 RESTful endpoints** under `/api`:
-
-| Module            | Endpoints                                             |
-| ----------------- | ----------------------------------------------------- |
-| **Auth**          | `POST /login`, `POST /logout`, `GET /me`              |
-| **Candidates**    | CRUD + `POST /import/preview`, `POST /import/confirm` |
-| **Halls**         | CRUD + `GET /:id` (with seats)                        |
-| **Seats**         | `GET /:hallId` (filtered by session)                  |
-| **Sessions**      | CRUD                                                  |
-| **Career Groups** | `GET /`, `POST /`                                     |
-| **Schedule**      | `GET /status`, `GET /preview`, `POST /generate`, `POST /confirm`, `POST /clear` |
-| **Attendance**    | `GET /`, `POST /:sid/:hid/generate`, `GET /:sid/:hid/pdf`, `GET /:sid/:hid/html` |
-| **Analytics**     | `GET /`                                               |
-| **Activity Log**  | `GET /` (paginated)                                   |
-| **Admin**         | User CRUD, purge, seed, maintenance toggle            |
-
-See [docs/API.md](docs/API.md) for the complete API reference with request/response examples.
-
----
-
-## Architecture
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for detailed system architecture, database schema, authentication flow, and design patterns.
-
----
-
-## Deployment
-
-See [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) for production deployment instructions (Docker, Vercel, Railway, manual).
-
----
-
-## Development
-
-See [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for detailed development setup, workflow, and debugging guide.
-
----
-
-## Contributing
-
-See [docs/CONTRIBUTING.md](docs/CONTRIBUTING.md) for contribution guidelines, code style, and PR process.
+- [API Reference](docs/API.md) — All endpoints with examples
+- [Architecture](docs/ARCHITECTURE.md) — System design, database schema, auth flow
+- [Deployment](docs/DEPLOYMENT.md) — Docker, Vercel, Railway, Nginx, production checklist
+- [Development](docs/DEVELOPMENT.md) — Setup, workflow, debugging guide
+- [Contributing](docs/CONTRIBUTING.md) — Branch naming, commits, PR process
+- [Scheduling Algorithm](docs/scheduling-algorithm.md) — How the seat assignment engine works
 
 ---
 
 ## License
 
-This project is private and proprietary. Unauthorized distribution is prohibited.
+Private and proprietary. Unauthorized distribution is prohibited.
