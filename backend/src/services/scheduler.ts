@@ -314,7 +314,8 @@ export async function generateSchedule(opts: GenerateOptions): Promise<PlanResul
 
   // --- Bulk reads -------------------------------------------------------------------
   const sessions: Session[] = await ds.query(
-    `SELECT * FROM sessions WHERE id IN (${opts.sessionIds.map((_, i) => `$${i + 1}`).join(',')})`,
+    `SELECT id, name, exam_date AS "examDate", start_time AS "startTime", end_time AS "endTime"
+     FROM sessions WHERE id IN (${opts.sessionIds.map((_, i) => `$${i + 1}`).join(',')})`,
     opts.sessionIds,
   ) as Session[];
   if (sessions.length !== opts.sessionIds.length) {
@@ -323,10 +324,16 @@ export async function generateSchedule(opts: GenerateOptions): Promise<PlanResul
     throw new Error(`Session(s) not found: ${missing.join(', ')}`);
   }
 
-  const halls: Hall[] = await ds.query(`SELECT * FROM halls`) as Hall[];
+  const halls: Hall[] = await ds.query(
+    `SELECT id, name, capacity, status FROM halls`
+  ) as Hall[];
   if (!halls.some((h) => h.status === 'active')) {
     throw new Error('No active halls available for scheduling');
   }
+
+  const CAND_SEL = `id, name, email, "matricNo", career_group_id AS "careerGroupId",
+    status, assigned_hall_id AS "assignedHallId", assigned_seat_number AS "assignedSeatNumber",
+    assigned_session_id AS "assignedSessionId", assigned_exam_date AS "assignedExamDate"`;
 
   // Chunked candidate read — 100 K rows per round-trip.
   const CHUNK = 100_000;
@@ -335,7 +342,7 @@ export async function generateSchedule(opts: GenerateOptions): Promise<PlanResul
     for (let i = 0; i < opts.candidateIds.length; i += CHUNK) {
       const slice = opts.candidateIds.slice(i, i + CHUNK);
       const rows = await ds.query(
-        `SELECT * FROM candidates WHERE id IN (${slice.map((_, j) => `$${j + 1}`).join(',')})`,
+        `SELECT ${CAND_SEL} FROM candidates WHERE id IN (${slice.map((_, j) => `$${j + 1}`).join(',')})`,
         slice,
       );
       candidates.push(...rows);
@@ -345,7 +352,7 @@ export async function generateSchedule(opts: GenerateOptions): Promise<PlanResul
     // eslint-disable-next-line no-constant-condition
     while (true) {
       const rows: Candidate[] = await ds.query(
-        `SELECT * FROM candidates ORDER BY id LIMIT $1 OFFSET $2`,
+        `SELECT ${CAND_SEL} FROM candidates ORDER BY id LIMIT $1 OFFSET $2`,
         [CHUNK, offset],
       );
       candidates.push(...rows);
@@ -357,24 +364,28 @@ export async function generateSchedule(opts: GenerateOptions): Promise<PlanResul
   // Filter out completed candidates.
   const availableCandidates = candidates.filter((c) => c.status !== CandidateStatus.COMPLETED);
 
-  const groups: CareerGroup[] = await ds.query(`SELECT * FROM career_groups`) as CareerGroup[];
+  const groups: CareerGroup[] = await ds.query(
+    `SELECT id, name, description, subjects, candidate_count AS "candidateCount" FROM career_groups`
+  ) as CareerGroup[];
   const sessionIds = sessions.map((s) => s.id);
 
   // Candidates already assigned outside the selected sessions — skip them.
   let outsideSet = new Set<string>();
   if (availableCandidates.length > 0) {
     const outsideIds = await ds.query(
-      `SELECT DISTINCT candidate_id FROM candidate_assignments
+      `SELECT DISTINCT candidate_id AS "candidateId" FROM candidate_assignments
        WHERE candidate_id IN (${availableCandidates.map((_, i) => `$${i + 1}`).join(',')})
          AND session_id NOT IN (${sessionIds.map((_, i) => `$${availableCandidates.length + i + 1}`).join(',')})`,
       [...availableCandidates.map((c) => c.id), ...sessionIds],
     );
-    outsideSet = new Set(outsideIds.map((r: { candidate_id: string }) => r.candidate_id));
+    outsideSet = new Set(outsideIds.map((r: { candidateId: string }) => r.candidateId));
   }
   const available = availableCandidates.filter((c) => !outsideSet.has(c.id));
 
   const existing = await ds.query(
-    `SELECT * FROM candidate_assignments
+    `SELECT id, candidate_id AS "candidateId", session_id AS "sessionId",
+            hall_id AS "hallId", seat_number AS "seatNumber"
+     FROM candidate_assignments
      WHERE session_id IN (${sessionIds.map((_, i) => `$${i + 1}`).join(',')})`,
     sessionIds,
   ) as CandidateAssignment[];
