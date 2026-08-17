@@ -175,14 +175,9 @@ export const clear = asyncHandler(async (req: Request, res: Response) => {
   await qr.connect();
   await qr.startTransaction();
   try {
-    await qr.manager.delete(CandidateAssignment, {});
-    await qr.manager.update(Candidate, {}, { status: CandidateStatus.UNSCHEDULED });
-    await qr.manager.update(
-      Candidate,
-      {},
-      { assignedHallId: null, assignedSeatNumber: null, assignedSessionId: null, assignedExamDate: null }
-    );
-    await qr.manager.update(Seat, {}, { status: 'available', candidateId: null });
+    await qr.query('DELETE FROM candidate_assignment');
+    await qr.query('UPDATE candidate SET status = $1, assigned_hall_id = NULL, assigned_seat_number = NULL, assigned_session_id = NULL, assigned_exam_date = NULL', [CandidateStatus.UNSCHEDULED]);
+    await qr.query('UPDATE seat SET status = $1, candidate_id = NULL', ['available']);
     const meta = await getOrCreateMeta();
     meta.status = ScheduleState.NONE;
     meta.summary = null;
