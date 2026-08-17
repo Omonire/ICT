@@ -18,10 +18,10 @@ export class ScheduleMeta {
   @Column({ name: 'session_ids', type: 'simple-json', nullable: true })
   sessionIds: string[] | null = null;
 
-  @Column({ name: 'generated_at', type: 'datetime', nullable: true })
+  @Column({ name: 'generated_at', type: 'timestamp', nullable: true })
   generatedAt: Date | null = null;
 
-  @Column({ name: 'confirmed_at', type: 'datetime', nullable: true })
+  @Column({ name: 'confirmed_at', type: 'timestamp', nullable: true })
   confirmedAt: Date | null = null;
 
   @Column({ name: 'confirmed_by', type: 'varchar', nullable: true })
