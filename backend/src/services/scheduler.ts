@@ -311,84 +311,49 @@ export interface GenerateOptions {
  */
 export async function generateSchedule(opts: GenerateOptions): Promise<PlanResult> {
   const ds = AppDataSource;
+  const sessionRepo = ds.getRepository(Session);
+  const hallRepo = ds.getRepository(Hall);
+  const candidateRepo = ds.getRepository(Candidate);
+  const assignmentRepo = ds.getRepository(CandidateAssignment);
+  const groupRepo = ds.getRepository(CareerGroup);
 
-  // --- Bulk reads -------------------------------------------------------------------
-  const sessions: Session[] = await ds.query(
-    `SELECT id, name, exam_date AS "examDate", start_time AS "startTime", end_time AS "endTime"
-     FROM sessions WHERE id IN (${opts.sessionIds.map((_, i) => `$${i + 1}`).join(',')})`,
-    opts.sessionIds,
-  ) as Session[];
+  // --- Bulk reads (TypeORM repos — handles column-name mapping) ---------------------
+  const sessions = await sessionRepo.find({ where: opts.sessionIds.map((id) => ({ id })) });
   if (sessions.length !== opts.sessionIds.length) {
     const found = new Set(sessions.map((s) => s.id));
     const missing = opts.sessionIds.filter((id) => !found.has(id));
     throw new Error(`Session(s) not found: ${missing.join(', ')}`);
   }
 
-  const halls: Hall[] = await ds.query(
-    `SELECT id, name, capacity, status FROM halls`
-  ) as Hall[];
+  const halls = await hallRepo.find();
   if (!halls.some((h) => h.status === 'active')) {
     throw new Error('No active halls available for scheduling');
   }
 
-  const CAND_SEL = `id, name, email, "matricNo", career_group_id AS "careerGroupId",
-    status, assigned_hall_id AS "assignedHallId", assigned_seat_number AS "assignedSeatNumber",
-    assigned_session_id AS "assignedSessionId", assigned_exam_date AS "assignedExamDate"`;
+  let candidates = opts.candidateIds
+    ? await candidateRepo.find({ where: opts.candidateIds.map((id) => ({ id })) })
+    : await candidateRepo.find();
 
-  // Chunked candidate read — 100 K rows per round-trip.
-  const CHUNK = 100_000;
-  const candidates: Candidate[] = [];
-  if (opts.candidateIds) {
-    for (let i = 0; i < opts.candidateIds.length; i += CHUNK) {
-      const slice = opts.candidateIds.slice(i, i + CHUNK);
-      const rows = await ds.query(
-        `SELECT ${CAND_SEL} FROM candidates WHERE id IN (${slice.map((_, j) => `$${j + 1}`).join(',')})`,
-        slice,
-      );
-      candidates.push(...rows);
-    }
-  } else {
-    let offset = 0;
-    // eslint-disable-next-line no-constant-condition
-    while (true) {
-      const rows: Candidate[] = await ds.query(
-        `SELECT ${CAND_SEL} FROM candidates ORDER BY id LIMIT $1 OFFSET $2`,
-        [CHUNK, offset],
-      );
-      candidates.push(...rows);
-      if (rows.length < CHUNK) break;
-      offset += CHUNK;
-    }
-  }
+  candidates = candidates.filter((c) => c.status !== CandidateStatus.COMPLETED);
 
-  // Filter out completed candidates.
-  const availableCandidates = candidates.filter((c) => c.status !== CandidateStatus.COMPLETED);
-
-  const groups: CareerGroup[] = await ds.query(
-    `SELECT id, name, description, subjects, candidate_count AS "candidateCount" FROM career_groups`
-  ) as CareerGroup[];
+  const groups = await groupRepo.find();
   const sessionIds = sessions.map((s) => s.id);
 
   // Candidates already assigned outside the selected sessions — skip them.
   let outsideSet = new Set<string>();
-  if (availableCandidates.length > 0) {
-    const outsideIds = await ds.query(
-      `SELECT DISTINCT candidate_id AS "candidateId" FROM candidate_assignments
-       WHERE candidate_id IN (${availableCandidates.map((_, i) => `$${i + 1}`).join(',')})
-         AND session_id NOT IN (${sessionIds.map((_, i) => `$${availableCandidates.length + i + 1}`).join(',')})`,
-      [...availableCandidates.map((c) => c.id), ...sessionIds],
-    );
-    outsideSet = new Set(outsideIds.map((r: { candidateId: string }) => r.candidateId));
+  if (candidates.length > 0) {
+    const outsideAssignments = await assignmentRepo
+      .createQueryBuilder('a')
+      .where('a.candidateId IN (:...ids)', { ids: candidates.map((c) => c.id) })
+      .andWhere('a.sessionId NOT IN (:...sessionIds)', { sessionIds })
+      .getMany();
+    outsideSet = new Set(outsideAssignments.map((a) => a.candidateId));
   }
-  const available = availableCandidates.filter((c) => !outsideSet.has(c.id));
+  const available = candidates.filter((c) => !outsideSet.has(c.id));
 
-  const existing = await ds.query(
-    `SELECT id, candidate_id AS "candidateId", session_id AS "sessionId",
-            hall_id AS "hallId", seat_number AS "seatNumber"
-     FROM candidate_assignments
-     WHERE session_id IN (${sessionIds.map((_, i) => `$${i + 1}`).join(',')})`,
-    sessionIds,
-  ) as CandidateAssignment[];
+  const existing = await assignmentRepo.find({
+    where: sessionIds.map((id) => ({ sessionId: id })),
+  });
 
   // --- Plan (pure in-memory) --------------------------------------------------------
   const result = buildPlan({ sessions, halls, candidates: available, groups, existing });
