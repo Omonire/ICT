@@ -11,7 +11,7 @@ const router = Router();
 
 router.get('/', listSheets);
 router.get('/:id/pdf', sheetById);
-router.post('/:sessionId/:hallId/generate', generateSheet);
+router.get('/:sessionId/:hallId/generate', generateSheet);
 router.get('/:sessionId/:hallId/pdf', sheetPdf);
 router.get('/:sessionId/:hallId/html', sheetHtml);
 
