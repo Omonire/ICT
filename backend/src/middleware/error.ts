@@ -53,10 +53,12 @@ export function errorHandler(
   }
 
   console.error('[error]', err);
+  const message =
+    err instanceof Error ? err.message : 'Something went wrong';
   res.status(500).json({
     error: {
       code: 'INTERNAL_ERROR',
-      message: 'Something went wrong',
+      message,
       ...(env.nodeEnv === 'development' ? { detail: String(err) } : {}),
     },
   });
