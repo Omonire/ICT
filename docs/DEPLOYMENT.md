@@ -24,7 +24,7 @@ This guide covers deploying ExamFlow to production environments.
 
 - **Node.js** >= 18
 - **npm** >= 9
-- **PostgreSQL** (recommended for production) or SQLite (demo/small deployments)
+- **Turso Cloud** (libSQL) — recommended for production
 
 ---
 
@@ -37,7 +37,8 @@ PORT=4000
 NODE_ENV=production
 
 # Database — single connection URL
-DATABASE_URL=postgres://examflow:<strong-password>@localhost:5432/examflow
+DATABASE_URL=libsql://your-db-name-your-org.turso.io
+TURSO_AUTH_TOKEN=your-turso-auth-token
 
 # Auth — use a strong, random secret (64+ chars)
 JWT_SECRET=<generate-with-openssl-rand-base64-64>
@@ -68,22 +69,31 @@ openssl rand -base64 64
 
 ## Database Setup
 
-### PostgreSQL
+### Turso Cloud (Recommended)
 
-```sql
-CREATE DATABASE examflow;
-CREATE USER examflow WITH PASSWORD '<strong-password>';
-GRANT ALL PRIVILEGES ON DATABASE examflow TO examflow;
+```bash
+# Install the Turso CLI
+curl -sSfL https://get.tur.so/install.sh | bash
+
+# Sign in
+turso auth login
+
+# Create a database
+turso db create examflow-db
+
+# Get connection URL and auth token
+turso db show examflow-db --url
+turso db tokens create examflow-db
 ```
 
-TypeORM will auto-create tables when `synchronize: true` is set (development mode). For production, use migrations:
+TypeORM will auto-create tables when `synchronize: true` is set (development mode). In production, the backend syncs schema on cold start (Vercel) or you can run migrations:
 
 ```bash
 # If using TypeORM CLI
 npx typeorm migration:run -d backend/src/config/data-source.ts
 ```
 
-### SQLite
+### Local libSQL file (Development)
 
 No setup required. The database file is created at `backend/data/examflow.sqlite`. Ensure the `data/` directory is writable:
 
@@ -168,17 +178,6 @@ CMD ["npx", "next", "start"]
 version: "3.8"
 
 services:
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: examflow
-      POSTGRES_USER: examflow
-      POSTGRES_PASSWORD: ${DB_PASSWORD}
-    volumes:
-      - pgdata:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
-
   api:
     build:
       context: .
@@ -186,11 +185,10 @@ services:
     environment:
       PORT: 4000
       NODE_ENV: production
-      DATABASE_URL: postgres://examflow:${DB_PASSWORD}@db:5432/examflow
+      DATABASE_URL: ${DATABASE_URL}
+      TURSO_AUTH_TOKEN: ${TURSO_AUTH_TOKEN}
       JWT_SECRET: ${JWT_SECRET}
       COOKIE_SECURE: "true"
-    depends_on:
-      - db
     ports:
       - "4000:4000"
 
@@ -204,9 +202,6 @@ services:
       - api
     ports:
       - "3000:3000"
-
-volumes:
-  pgdata:
 ```
 
 ```bash
@@ -240,7 +235,8 @@ The backend ships with a serverless-compatible entrypoint at `backend/src/app.ts
    ```
    and configure the **Serverless Function path** as `backend/dist/app.js`.
 5. Set environment variables (see [Environment Configuration](#environment-configuration)):
-   - `DATABASE_URL` = `postgres://...` (a hosted Postgres such as Vercel Postgres or Neon — **required**; SQLite native bindings do not run reliably on serverless)
+   - `DATABASE_URL` = `libsql://your-db-your-org.turso.io` (a hosted Turso database — **required**; SQLite native bindings do not run reliably on serverless)
+   - `TURSO_AUTH_TOKEN` = your Turso auth token
    - `JWT_SECRET`, `JWT_EXPIRES_IN`, `COOKIE_SECURE=true`, `SEED_ON_STARTUP=false`
 6. Deploy. The API is served from `/` of that project's URL (e.g. `https://examflow-api.vercel.app/api/health`).
 
@@ -265,7 +261,7 @@ The Next.js config already includes API proxy rewrites for development. In produ
 Railway can host the full stack:
 
 1. Create a new project on [railway.app](https://railway.app)
-2. Add a PostgreSQL service
+2. Create a Turso Cloud database and get the URL/token
 3. Add the ExamFlow service (connect to GitHub repo)
 4. Set environment variables (see [Environment Configuration](#environment-configuration))
 5. Railway auto-deploys on push
@@ -343,8 +339,7 @@ Ensure `COOKIE_SECURE=true` in the backend `.env` so JWT cookies are only sent o
 - [ ] `JWT_SECRET` is a strong, random 64+ character string
 - [ ] `COOKIE_SECURE=true` (requires HTTPS)
 - [ ] `SEED_ON_STARTUP=false`
-- [ ] `DATABASE_URL` points to a PostgreSQL instance with a strong password
-- [ ] PostgreSQL is running and accessible
+- [ ] `DATABASE_URL` points to a Turso Cloud `libsql://` URL with `TURSO_AUTH_TOKEN` set
 - [ ] Backend is built (`tsc`) and running
 - [ ] Frontend is built (`next build`) and running
 - [ ] `NEXT_PUBLIC_API_URL` points to the production API

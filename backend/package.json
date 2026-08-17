@@ -2,7 +2,7 @@
   "name": "examflow-backend",
   "version": "1.0.0",
   "private": true,
-  "description": "ExamFlow REST API — Express + TypeORM + PostgreSQL",
+  "description": "ExamFlow REST API — Express + TypeORM + Turso (libSQL)",
   "main": "dist/index.js",
   "scripts": {
     "dev": "tsx watch src/index.ts",
@@ -22,11 +22,10 @@
     "dotenv": "^16.4.5",
     "express": "^4.21.2",
     "jsonwebtoken": "^9.0.2",
+    "libsql": "^0.5.29",
     "multer": "^1.4.5-lts.1",
     "pdfkit": "^0.15.2",
-    "pg": "^8.13.1",
     "reflect-metadata": "^0.2.2",
-    "sqlite3": "^5.1.7",
     "typeorm": "^0.3.20",
     "zod": "^3.24.1"
   },

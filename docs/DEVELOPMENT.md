@@ -28,7 +28,7 @@ This guide covers local development setup, workflow, and debugging for ExamFlow.
 | npm      | >= 9    | `npm --version`  |
 
 Optional:
-- **PostgreSQL** — if you want to develop against Postgres instead of SQLite
+- **Turso Cloud** — a hosted libSQL database for development (local dev uses a file automatically)
 - **VS Code** — recommended editor with extensions for TypeScript, Tailwind, ESLint
 
 ---
@@ -151,7 +151,7 @@ ICT/
 │   │   ├── services/        # Business logic
 │   │   ├── middleware/       # Auth, roles, errors, validation
 │   │   └── utils/           # IDs, errors, pagination
-│   └── data/                # SQLite database file
+│   └── data/                # libSQL database file
 │
 └── docs/                    # Documentation
 ```
@@ -290,18 +290,25 @@ await logActivity({
 
 ## Database
 
-### Default: SQLite
+### Default: Local libSQL file
 
 Zero-config. Database file at `backend/data/examflow.sqlite`. TypeORM creates tables automatically in development (`synchronize: true`).
 
-### PostgreSQL
+### Turso Cloud (Remote)
 
-1. Set `DATABASE_URL` in `backend/.env`:
+1. Set `DATABASE_URL` and `TURSO_AUTH_TOKEN` in `backend/.env`:
    ```bash
-   DATABASE_URL=postgres://user:password@localhost:5432/examflow
+   DATABASE_URL=libsql://your-db-name-your-org.turso.io
+   TURSO_AUTH_TOKEN=your-auth-token
    ```
-2. Create the database in PostgreSQL
-3. Restart the backend — tables auto-create
+2. Restart the backend — tables auto-create
+
+To create a Turso database:
+```bash
+turso auth login
+turso db create examflow-db
+turso db tokens create examflow-db
+```
 
 ### Re-seeding
 

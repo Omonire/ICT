@@ -1,6 +1,5 @@
 import dotenv from 'dotenv';
 import path from 'path';
-import { URL } from 'url';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../.env.local') });
@@ -11,62 +10,93 @@ function bool(value: string | undefined, fallback = false): boolean {
   return ['1', 'true', 'yes', 'on'].includes(value.toLowerCase());
 }
 
-interface PostgresDbConfig {
-  type: 'postgres';
-  host: string;
-  port: number;
-  username: string;
-  password: string;
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type DatabaseConstructor = new (...args: any[]) => any;
+
+export interface LibsqlDbConfig {
+  type: 'better-sqlite3';
+  /**
+   * Placeholder path — TypeORM's better-sqlite3 driver only uses this for
+   * directory-creation and attach-logic bookkeeping; it never opens this file.
+   * The real connection target is captured inside the `driver` wrapper.
+   */
   database: string;
+  /**
+   * Wrapper constructor that returns a libsql `Database` connected to either
+   * Turso Cloud (libsql://… + auth token) or a local libSQL/SQLite file.
+   */
+  driver: DatabaseConstructor;
+  enableWAL?: boolean;
 }
 
-interface SqliteDbConfig {
-  type: 'sqlite';
-  database: string;
+const DEFAULT_LOCAL_DB = path.resolve(__dirname, '../../data/examflow.sqlite');
+const PLACEHOLDER_DB = ':memory:';
+
+function toLocalPath(value: string): string {
+  const filePath = value
+    .replace(/^(sqlite|file):/, '')
+    .replace(/^\/\//, '');
+  if (!filePath) return DEFAULT_LOCAL_DB;
+  return path.isAbsolute(filePath)
+    ? filePath
+    : path.resolve(__dirname, '../../', filePath);
 }
 
-type DbConfig = PostgresDbConfig | SqliteDbConfig;
+function parseDatabaseUrl(): LibsqlDbConfig {
+  const url = (process.env.DATABASE_URL ?? '').trim();
+  const authToken = process.env.TURSO_AUTH_TOKEN;
 
-function parseDatabaseUrl(): DbConfig {
-  const url = process.env.DATABASE_URL;
+  const isTurso =
+    url.startsWith('libsql://') ||
+    url.startsWith('http://') ||
+    url.startsWith('https://');
 
-  if (url && (url.startsWith('postgres://') || url.startsWith('postgresql://'))) {
-    const parsed = new URL(url);
-    return {
-      type: 'postgres',
-      host: parsed.hostname || 'localhost',
-      port: Number(parsed.port) || 5432,
-      username: parsed.username || 'postgres',
-      password: parsed.password || '',
-      database: parsed.pathname.replace(/^\//, '') || 'examflow',
-    };
-  }
+  // Determine the real connection target.
+  //   Turso remote  → the libsql:// URL itself
+  //   Local file    → resolved filesystem path
+  //   Empty / unset → default local file
+  const connectionUrl = url
+    ? isTurso
+      ? url
+      : toLocalPath(url)
+    : DEFAULT_LOCAL_DB;
 
-  if (url && url.startsWith('sqlite:')) {
-    const filePath = url.replace(/^sqlite:/, '').replace(/^\/\//, '');
-    const resolved = filePath.startsWith('/')
-      ? filePath
-      : path.resolve(__dirname, '../../', filePath);
-    return { type: 'sqlite', database: resolved };
-  }
+  // TypeORM's better-sqlite3 driver calls:
+  //   new driver(database, { readonly, fileMustExist, timeout, … })
+  // and expects a better-sqlite3-compatible Database instance.
+  // libsql's Database is a drop-in replacement.
+  const driver = (function LibsqlDriverConstructor() {
+    // Lazy-load the native module so that it doesn't interfere with
+    // reflect-metadata import ordering during the boot sequence.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const LibsqlDatabase = require('libsql');
+    const opts = authToken ? { authToken } : undefined;
+    const db = new LibsqlDatabase(connectionUrl, opts);
 
-  // Fallback: individual DB_* vars or default sqlite
-  const dbType = (process.env.DB_TYPE ?? 'sqlite') as 'postgres' | 'sqlite';
+    // TypeORM calls `db.pragma("foreign_keys = ON")` and other PRAGMAs
+    // unconditionally. libsql remote connections don't support all PRAGMAs,
+    // so on Turso we silently swallow any errors.
+    if (isTurso) {
+      const originalPragma = db.pragma.bind(db);
+      db.pragma = (...args: unknown[]) => {
+        try {
+          return originalPragma(...args);
+        } catch {
+          return [];
+        }
+      };
+    }
 
-  if (dbType === 'postgres') {
-    return {
-      type: 'postgres',
-      host: process.env.DB_HOST ?? 'localhost',
-      port: Number(process.env.DB_PORT ?? 5432),
-      username: process.env.DB_USER ?? 'postgres',
-      password: process.env.DB_PASSWORD ?? 'postgres',
-      database: process.env.DB_NAME ?? 'examflow',
-    };
-  }
+    return db;
+  }) as unknown as DatabaseConstructor;
 
   return {
-    type: 'sqlite',
-    database: process.env.DB_FILE ?? path.resolve(__dirname, '../../data/examflow.sqlite'),
+    type: 'better-sqlite3',
+    database: PLACEHOLDER_DB,
+    driver,
+    // WAL mode improves performance for local files but is managed
+    // server-side by Turso, so we only enable it locally.
+    enableWAL: !isTurso,
   };
 }
 

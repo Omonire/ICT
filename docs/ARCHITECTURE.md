@@ -54,7 +54,7 @@ This document describes ExamFlow's system architecture, database schema, authent
 │                     │                                    │
 │              ┌──────┴──────┐                             │
 │              │  Database   │                             │
-│              │ SQLite/PG   │                             │
+│              │  Turso (libSQL)│                             │
 │              └─────────────┘                             │
 └─────────────────────────────────────────────────────────┘
 ```

@@ -41,12 +41,12 @@ Browser
 │  Backend (Express serverless function)      │
 │  https://examflow-api.vercel.app            │
 │  backend/src/app.ts → default handler       │
-│  ├─ inits Postgres (DATABASE_URL)           │
+│  ├─ inits Turso libSQL (DATABASE_URL)       │
 │  ├─ syncs schema on cold start              │
 │  └─ serves /api/*                           │
 └──────────────────┬──────────────────────────┘
                    ▼
-           PostgreSQL (Vercel Postgres / Neon)
+           Turso Cloud (libSQL)
 ```
 
 **Why two projects?** Vercel only supports one framework per project. Next.js and Express are different runtimes, so they each get their own Vercel project.
@@ -59,28 +59,38 @@ Before you start, make sure you have:
 
 - [ ] A **GitHub account** and the ExamFlow repo (`Omonire/ICT`) pushed to GitHub
 - [ ] A **Vercel account** (free tier is enough) at [vercel.com](https://vercel.com)
-- [ ] A **PostgreSQL database** (see step 3)
+- [ ] A **Turso Cloud database** (see step 3)
 - [ ] The repo cloned locally (for reference / troubleshooting)
 
 ---
 
 ## 3. Create the Database
 
-Serverless environments can't run the SQLite file database reliably (native bindings). You need a hosted PostgreSQL. Any of these work — Vercel Postgres, Neon, Supabase, Railway.
+Serverless environments can't run the SQLite file database reliably (native bindings). You need a hosted database. [Turso Cloud](https://turso.tech) (libSQL) is the primary option.
 
-### Option A: Vercel Postgres (recommended — lives next to your projects)
+### Create a Turso database
 
-1. In the Vercel dashboard, go to **Storage → Create Database → Postgres**
-2. Name it `examflow-db`
-3. Choose a region close to your API deployment
-4. When created, open **Storage → examflow-db → Connect**
-5. Copy the **pooled** connection string under "psql" — it looks like:
+1. Install the Turso CLI:
+   ```bash
+   curl -sSfL https://get.tur.so/install.sh | bash
    ```
-   postgres://default:password@host-...pooler.supabase.com:5432/verceldb
+2. Sign in: `turso auth login`
+3. Create a database:
+   ```bash
+   turso db create examflow-db
    ```
-   (Any Postgres connection string works — use whatever "DATABASE_URL" format your provider gives you.)
+4. Get the connection URL:
+   ```bash
+   turso db show examflow-db --url
+   # → libsql://examflow-db-<your-org>.turso.io
+   ```
+5. Create an auth token:
+   ```bash
+   turso db tokens create examflow-db
+   # → <your-auth-token>
+   ```
 
-> Save this string — you'll paste it into Vercel as `DATABASE_URL` in step 4. The backend creates the tables automatically on cold start (schema sync), so no manual schema setup is needed.
+> Save both values — you'll paste them into Vercel as `DATABASE_URL` and `TURSO_AUTH_TOKEN` in step 4. The backend creates the tables automatically on cold start (schema sync), so no manual schema setup is needed.
 
 ---
 
@@ -130,7 +140,8 @@ While in **Settings**, go to **Environment Variables** and add:
 
 | Name                 | Value                                              | Environments      |
 | -------------------- | -------------------------------------------------- | ----------------- |
-| `DATABASE_URL`       | Your Postgres connection string from step 3        | Production (and Preview if you want) |
+| `DATABASE_URL`       | Your Turso `libsql://` URL from step 3             | Production (and Preview if you want) |
+| `TURSO_AUTH_TOKEN`   | Your Turso auth token from step 3                  | Production (and Preview if you want) |
 | `JWT_SECRET`         | A long random string (see below)                   | Production        |
 | `JWT_EXPIRES_IN`     | `7d`                                               | Production        |
 | `COOKIE_SECURE`      | `true`                                             | Production        |
@@ -260,7 +271,8 @@ If the login fails with a **network error**, see [Troubleshooting](#10-troublesh
 
 | Variable            | Required | Description                                              |
 | ------------------- | -------- | -------------------------------------------------------- |
-| `DATABASE_URL`      | Yes      | Postgres connection string                               |
+| `DATABASE_URL`      | Yes      | Turso `libsql://` URL                                    |
+| `TURSO_AUTH_TOKEN`  | Yes      | Turso authentication token                               |
 | `JWT_SECRET`        | Yes      | Long random secret for signing tokens                    |
 | `JWT_EXPIRES_IN`    | No       | Token lifetime (default `7d`)                            |
 | `COOKIE_SECURE`     | No       | `true` in production (HTTPS-only cookies)                |
@@ -305,26 +317,24 @@ To deploy a preview (test branch): open a PR or push a branch — Vercel creates
 - Use the **rewrite/proxy approach** (same-origin) so the httpOnly cookie flows correctly
 - Make sure `COOKIE_SECURE=true` only if you're on HTTPS (Vercel is always HTTPS, so keep it `true`)
 
-### `Could not connect to database` / `ECONNREFUSED`
+### `Could not connect to database` / `ConnectionFailed`
 
-**Cause:** `DATABASE_URL` is missing or the Postgres region/network blocks serverless.
-
-**Fixes:**
-- Confirm `DATABASE_URL` is set in the **backend** project's Production env
-- Use the **pooled** connection string from Vercel Postgres (not the direct one)
-- Put the Postgres and the API in the same region
-
-### Build fails on `sqlite3`
-
-**Cause:** The `sqlite3` native module can fail to compile in Vercel's build environment.
+**Cause:** `DATABASE_URL` is missing or the Turso database/token is invalid.
 
 **Fixes:**
-- Ensure `DATABASE_URL` is set so the code paths never touch the SQLite driver
-- If the build still fails, move `sqlite3` to optional dependencies or install it as an optional peer:
-  ```json
-  "optionalDependencies": { "sqlite3": "^5.1.7" }
-  ```
-- SQLite is for local dev only; Vercel must use Postgres.
+- Confirm `DATABASE_URL` and `TURSO_AUTH_TOKEN` are set in the **backend** project's Production env
+- Verify the Turso database exists: `turso db show examflow-db`
+- Verify the token is valid: `turso db tokens create examflow-db`
+- Confirm the URL format is `libsql://examflow-db-<org>.turso.io` (not `https://`)
+
+### Native module errors during build
+
+**Cause:** The `libsql` native module ships prebuilt binaries for common platforms (linux-x64-gnu, darwin-arm64, etc.). If Vercel's build environment doesn't match, the build can fail.
+
+**Fixes:**
+- Ensure `DATABASE_URL` is set to a `libsql://` Turso URL so the code path opens a remote connection
+- The `libsql` package includes prebuilt binaries for Vercel's runtime — this should work out of the box
+- If the build still fails, check the `libsql` package version and file an issue at [github.com/tursodatabase/libsql-js](https://github.com/tursodatabase/libsql-js)
 
 ### Cold start is slow / first request times out
 
