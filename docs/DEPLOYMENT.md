@@ -24,7 +24,7 @@ This guide covers deploying ExamFlow to production environments.
 
 - **Node.js** >= 18
 - **npm** >= 9
-- **Turso Cloud** (libSQL) — recommended for production
+- **PostgreSQL** — recommended for production ([Neon](https://neon.tech) for managed hosting)
 
 ---
 
@@ -37,8 +37,7 @@ PORT=4000
 NODE_ENV=production
 
 # Database — single connection URL
-DATABASE_URL=libsql://your-db-name-your-org.turso.io
-TURSO_AUTH_TOKEN=your-turso-auth-token
+DATABASE_URL=postgresql://user:password@your-host:5432/your-db
 
 # Auth — use a strong, random secret (64+ chars)
 JWT_SECRET=<generate-with-openssl-rand-base64-64>
@@ -69,21 +68,18 @@ openssl rand -base64 64
 
 ## Database Setup
 
-### Turso Cloud (Recommended)
+### PostgreSQL (Recommended)
 
 ```bash
-# Install the Turso CLI
-curl -sSfL https://get.tur.so/install.sh | bash
+# Create a PostgreSQL database on Neon (https://neon.tech)
+# 1. Sign up at https://neon.tech
+# 2. Create a new project
+# 3. Copy the connection string from the Neon dashboard
+```
 
-# Sign in
-turso auth login
-
-# Create a database
-turso db create examflow-db
-
-# Get connection URL and auth token
-turso db show examflow-db --url
-turso db tokens create examflow-db
+The connection string looks like:
+```
+postgresql://user:password@ep-xxx-xxx.us-east-2.aws.neon.tech/your-db?sslmode=require
 ```
 
 TypeORM will auto-create tables when `synchronize: true` is set (development mode). In production, the backend syncs schema on cold start (Vercel) or you can run migrations:
@@ -93,7 +89,7 @@ TypeORM will auto-create tables when `synchronize: true` is set (development mod
 npx typeorm migration:run -d backend/src/config/data-source.ts
 ```
 
-### Local libSQL file (Development)
+### Local SQLite file (Development)
 
 No setup required. The database file is created at `backend/data/examflow.sqlite`. Ensure the `data/` directory is writable:
 
@@ -186,7 +182,6 @@ services:
       PORT: 4000
       NODE_ENV: production
       DATABASE_URL: ${DATABASE_URL}
-      TURSO_AUTH_TOKEN: ${TURSO_AUTH_TOKEN}
       JWT_SECRET: ${JWT_SECRET}
       COOKIE_SECURE: "true"
     ports:
@@ -235,8 +230,7 @@ The backend ships with a serverless-compatible entrypoint at `backend/src/app.ts
    ```
    and configure the **Serverless Function path** as `backend/dist/app.js`.
 5. Set environment variables (see [Environment Configuration](#environment-configuration)):
-   - `DATABASE_URL` = `libsql://your-db-your-org.turso.io` (a hosted Turso database — **required**; SQLite native bindings do not run reliably on serverless)
-   - `TURSO_AUTH_TOKEN` = your Turso auth token
+   - `DATABASE_URL` = your PostgreSQL connection string (e.g. from [Neon](https://neon.tech)) — **required** for serverless deployments
    - `JWT_SECRET`, `JWT_EXPIRES_IN`, `COOKIE_SECURE=true`, `SEED_ON_STARTUP=false`
 6. Deploy. The API is served from `/` of that project's URL (e.g. `https://examflow-api.vercel.app/api/health`).
 
@@ -261,7 +255,7 @@ The Next.js config already includes API proxy rewrites for development. In produ
 Railway can host the full stack:
 
 1. Create a new project on [railway.app](https://railway.app)
-2. Create a Turso Cloud database and get the URL/token
+2. Create a PostgreSQL database on [Neon](https://neon.tech) and get the connection string
 3. Add the ExamFlow service (connect to GitHub repo)
 4. Set environment variables (see [Environment Configuration](#environment-configuration))
 5. Railway auto-deploys on push
@@ -339,7 +333,7 @@ Ensure `COOKIE_SECURE=true` in the backend `.env` so JWT cookies are only sent o
 - [ ] `JWT_SECRET` is a strong, random 64+ character string
 - [ ] `COOKIE_SECURE=true` (requires HTTPS)
 - [ ] `SEED_ON_STARTUP=false`
-- [ ] `DATABASE_URL` points to a Turso Cloud `libsql://` URL with `TURSO_AUTH_TOKEN` set
+- [ ] `DATABASE_URL` points to a PostgreSQL database (e.g. Neon) with correct credentials
 - [ ] Backend is built (`tsc`) and running
 - [ ] Frontend is built (`next build`) and running
 - [ ] `NEXT_PUBLIC_API_URL` points to the production API

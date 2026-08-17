@@ -28,7 +28,7 @@ This guide covers local development setup, workflow, and debugging for ExamFlow.
 | npm      | >= 9    | `npm --version`  |
 
 Optional:
-- **Turso Cloud** — a hosted libSQL database for development (local dev uses a file automatically)
+- **PostgreSQL** — a hosted database on [Neon](https://neon.tech) for development (local dev uses a file automatically)
 - **VS Code** — recommended editor with extensions for TypeScript, Tailwind, ESLint
 
 ---
@@ -151,7 +151,7 @@ ICT/
 │   │   ├── services/        # Business logic
 │   │   ├── middleware/       # Auth, roles, errors, validation
 │   │   └── utils/           # IDs, errors, pagination
-│   └── data/                # libSQL database file
+│   └── data/                # SQLite database file
 │
 └── docs/                    # Documentation
 ```
@@ -290,25 +290,22 @@ await logActivity({
 
 ## Database
 
-### Default: Local libSQL file
+### Default: Local SQLite file
 
 Zero-config. Database file at `backend/data/examflow.sqlite`. TypeORM creates tables automatically in development (`synchronize: true`).
 
-### Turso Cloud (Remote)
+### PostgreSQL / Neon (Remote)
 
-1. Set `DATABASE_URL` and `TURSO_AUTH_TOKEN` in `backend/.env`:
+1. Set `DATABASE_URL` in `backend/.env`:
    ```bash
-   DATABASE_URL=libsql://your-db-name-your-org.turso.io
-   TURSO_AUTH_TOKEN=your-auth-token
+   DATABASE_URL=postgresql://user:password@your-host:5432/your-db?sslmode=require
    ```
 2. Restart the backend — tables auto-create
 
-To create a Turso database:
-```bash
-turso auth login
-turso db create examflow-db
-turso db tokens create examflow-db
-```
+To set up a free PostgreSQL database:
+1. Sign up at [Neon](https://neon.tech)
+2. Create a new project
+3. Copy the connection string from the dashboard and set it as `DATABASE_URL`
 
 ### Re-seeding
 

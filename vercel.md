@@ -59,38 +59,30 @@ Before you start, make sure you have:
 
 - [ ] A **GitHub account** and the ExamFlow repo (`Omonire/ICT`) pushed to GitHub
 - [ ] A **Vercel account** (free tier is enough) at [vercel.com](https://vercel.com)
-- [ ] A **Turso Cloud database** (see step 3)
+- [ ] A **PostgreSQL database** (see step 3)
 - [ ] The repo cloned locally (for reference / troubleshooting)
 
 ---
 
 ## 3. Create the Database
 
-Serverless environments can't run the SQLite file database reliably (native bindings). You need a hosted database. [Turso Cloud](https://turso.tech) (libSQL) is the primary option.
+Serverless environments can't run the SQLite file database reliably. You need a hosted PostgreSQL database. Any of these work on the free tier:
 
-### Create a Turso database
+- **[Neon](https://neon.tech)** — Recommended. Free tier, easy setup, serverless Postgres.
+- **[Supabase](https://supabase.com)** — Free tier Postgres with a nice dashboard.
+- **[Vercel Postgres](https://vercel.com/docs/storage/vercel-postgres)** — Works if your Vercel plan supports it.
 
-1. Install the Turso CLI:
-   ```bash
-   curl -sSfL https://get.tur.so/install.sh | bash
-   ```
-2. Sign in: `turso auth login`
-3. Create a database:
-   ```bash
-   turso db create examflow-db
-   ```
-4. Get the connection URL:
-   ```bash
-   turso db show examflow-db --url
-   # → libsql://examflow-db-<your-org>.turso.io
-   ```
-5. Create an auth token:
-   ```bash
-   turso db tokens create examflow-db
-   # → <your-auth-token>
-   ```
+### Create a Neon database (recommended)
 
-> Save both values — you'll paste them into Vercel as `DATABASE_URL` and `TURSO_AUTH_TOKEN` in step 4. The backend creates the tables automatically on cold start (schema sync), so no manual schema setup is needed.
+1. Sign up at [neon.tech](https://neon.tech)
+2. Create a new project (pick any name, e.g. `examflow`)
+3. Copy the **Connection String** from the dashboard:
+   ```
+   postgresql://neondb_owner:xxxx@ep-xxx.us-east-2.aws.neon.tech/examflow?sslmode=require
+   ```
+4. Save this — you'll paste it into Vercel as `DATABASE_URL` in step 4.
+
+> The backend creates the tables automatically on cold start (schema sync), so no manual schema setup is needed.
 
 ---
 
@@ -140,8 +132,7 @@ While in **Settings**, go to **Environment Variables** and add:
 
 | Name                 | Value                                              | Environments      |
 | -------------------- | -------------------------------------------------- | ----------------- |
-| `DATABASE_URL`       | Your Turso `libsql://` URL from step 3             | Production (and Preview if you want) |
-| `TURSO_AUTH_TOKEN`   | Your Turso auth token from step 3                  | Production (and Preview if you want) |
+| `DATABASE_URL`       | Your PostgreSQL connection string from step 3      | Production (and Preview if you want) |
 | `JWT_SECRET`         | A long random string (see below)                   | Production        |
 | `JWT_EXPIRES_IN`     | `7d`                                               | Production        |
 | `COOKIE_SECURE`      | `true`                                             | Production        |
@@ -271,8 +262,7 @@ If the login fails with a **network error**, see [Troubleshooting](#10-troublesh
 
 | Variable            | Required | Description                                              |
 | ------------------- | -------- | -------------------------------------------------------- |
-| `DATABASE_URL`      | Yes      | Turso `libsql://` URL                                    |
-| `TURSO_AUTH_TOKEN`  | Yes      | Turso authentication token                               |
+| `DATABASE_URL`      | Yes      | PostgreSQL connection string                             |
 | `JWT_SECRET`        | Yes      | Long random secret for signing tokens                    |
 | `JWT_EXPIRES_IN`    | No       | Token lifetime (default `7d`)                            |
 | `COOKIE_SECURE`     | No       | `true` in production (HTTPS-only cookies)                |
@@ -319,22 +309,13 @@ To deploy a preview (test branch): open a PR or push a branch — Vercel creates
 
 ### `Could not connect to database` / `ConnectionFailed`
 
-**Cause:** `DATABASE_URL` is missing or the Turso database/token is invalid.
+**Cause:** `DATABASE_URL` is missing or the PostgreSQL connection string is invalid.
 
 **Fixes:**
-- Confirm `DATABASE_URL` and `TURSO_AUTH_TOKEN` are set in the **backend** project's Production env
-- Verify the Turso database exists: `turso db show examflow-db`
-- Verify the token is valid: `turso db tokens create examflow-db`
-- Confirm the URL format is `libsql://examflow-db-<org>.turso.io` (not `https://`)
-
-### Native module errors during build
-
-**Cause:** The `libsql` native module ships prebuilt binaries for common platforms (linux-x64-gnu, darwin-arm64, etc.). If Vercel's build environment doesn't match, the build can fail.
-
-**Fixes:**
-- Ensure `DATABASE_URL` is set to a `libsql://` Turso URL so the code path opens a remote connection
-- The `libsql` package includes prebuilt binaries for Vercel's runtime — this should work out of the box
-- If the build still fails, check the `libsql` package version and file an issue at [github.com/tursodatabase/libsql-js](https://github.com/tursodatabase/libsql-js)
+- Confirm `DATABASE_URL` is set in the **backend** project's Production env
+- Verify the connection string format: `postgresql://user:password@host:5432/dbname?sslmode=require`
+- Test locally: `psql "your-connection-string"` — should connect
+- For Neon/Supabase, make sure you copied the full connection string including the password
 
 ### Cold start is slow / first request times out
 

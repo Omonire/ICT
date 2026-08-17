@@ -23,12 +23,10 @@ export const entities = [
   ScheduleMeta,
 ];
 
-const synchronize = !env.isProd;
-
 export const AppDataSource = new DataSource({
   entities,
   logging: false,
-  synchronize,
+  synchronize: true,
   ...dbConfig,
 });
 

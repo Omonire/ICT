@@ -42,7 +42,7 @@ Import CSV → Define Halls → Create Sessions → Generate Schedule → Downlo
 
 - **Frontend** — Next.js 14, React 18, TypeScript, Tailwind CSS, GSAP animations, Recharts charts
 - **Backend** — Express 4, TypeORM, JWT auth (httpOnly cookies), Zod validation, PDFKit for PDFs
-- **Database** — Turso Cloud (libSQL) with local file fallback
+- **Database** — PostgreSQL (Neon) with local SQLite fallback
 
 ---
 
@@ -82,7 +82,7 @@ In dev the two servers run concurrently — **Frontend:** http://localhost:3000 
 # Create .env files
 cp .env.example .env
 cp backend/.env.example backend/.env
-# Edit with production values (strong JWT secret, Turso credentials, COOKIE_SECURE=true)
+# Edit with production values (strong JWT secret, PostgreSQL credentials, COOKIE_SECURE=true)
 
 docker-compose up -d
 docker-compose exec api node dist/index.js --seed   # seed once
@@ -104,14 +104,14 @@ Optionally keep them as two processes with `npm run start:split`, or use PM2: `p
 
 Follow the full step-by-step guide: **[vercel.md](vercel.md)** — database setup, backend serverless function, frontend project, env vars, and troubleshooting.
 
-**Backend:** Import the repo as a Vercel project, add a serverless function for `backend/src/app.ts` (it ships with a Vercel-compatible default handler that auto-initializes the DB), set `DATABASE_URL` to your Turso `libsql://` URL and `TURSO_AUTH_TOKEN`, and deploy.
+**Backend:** Import the repo as a Vercel project, add a serverless function for `backend/src/app.ts` (it ships with a Vercel-compatible default handler that auto-initializes the DB), set `DATABASE_URL` to your PostgreSQL connection string (e.g. from [Neon](https://neon.tech)), and deploy.
 
 **Frontend:** Separate Vercel project, proxy `/api` to the backend (or set `NEXT_PUBLIC_API_URL`), deploy.
 
 ### Railway (Full Stack)
 
 1. Create project on [railway.app](https://railway.app)
-2. Create a Turso Cloud database (`turso db create`)
+2. Create a PostgreSQL database on [Neon](https://neon.tech)
 3. Connect your GitHub repo
 4. Set environment variables
 5. Auto-deploys on push
@@ -124,8 +124,7 @@ Follow the full step-by-step guide: **[vercel.md](vercel.md)** — database setu
 # Backend
 PORT=4000
 NODE_ENV=production
-DATABASE_URL=libsql://your-db-name-your-org.turso.io
-TURSO_AUTH_TOKEN=your-turso-auth-token
+DATABASE_URL=postgresql://user:password@your-host:5432/your-db
 JWT_SECRET=your-64-char-random-secret
 JWT_EXPIRES_IN=7d
 COOKIE_SECURE=true
@@ -149,7 +148,7 @@ backend/src/
   controllers/          9 controller modules
   services/             Scheduler engine, CSV import, attendance PDF, seeding
   middleware/           JWT auth, role guard, validation, error handling
-data/                   libSQL database file (auto-created)
+data/                   SQLite database file (auto-created)
 docs/                   Full documentation
 ```
 

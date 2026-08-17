@@ -452,8 +452,11 @@ export async function generateSchedule(opts: GenerateOptions): Promise<PlanResul
       );
 
       // Bulk update seat status for occupied seats.
-      for (let i = 0; i < latestAssignments.length; i += BATCH) {
-        const batch = latestAssignments.slice(i, i + BATCH);
+      // SQLite/Turso caps expression tree depth at 100 — each OR clause adds
+      // depth, so we must keep batches small (≤50 per batch).
+      const SEAT_BATCH = 50;
+      for (let i = 0; i < latestAssignments.length; i += SEAT_BATCH) {
+        const batch = latestAssignments.slice(i, i + SEAT_BATCH);
         await qr.manager
           .createQueryBuilder()
           .update(Seat)
@@ -471,8 +474,8 @@ export async function generateSchedule(opts: GenerateOptions): Promise<PlanResul
       }
 
       // Bulk update candidateId on occupied seats.
-      for (let i = 0; i < latestAssignments.length; i += BATCH) {
-        const batch = latestAssignments.slice(i, i + BATCH);
+      for (let i = 0; i < latestAssignments.length; i += SEAT_BATCH) {
+        const batch = latestAssignments.slice(i, i + SEAT_BATCH);
         // Use individual updates for candidateId since we need per-seat assignment.
         const seatUpdates = batch.map((a) =>
           qr.manager
