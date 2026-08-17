@@ -40,8 +40,8 @@ export default function SuperadminPage() {
   }, [seedSessionId]);
 
   useEffect(() => {
-    loadSessions();
-  }, [loadSessions]);
+    if (user) loadSessions();
+  }, [user, loadSessions]);
 
   if (user?.role !== 'superadmin') {
     return (

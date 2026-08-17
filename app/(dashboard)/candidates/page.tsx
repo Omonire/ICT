@@ -5,6 +5,7 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import { ArrowUpDown, ChevronUp, ChevronDown, Eye, Pencil, Plus, Trash2, Upload } from 'lucide-react';
 import { apiDelete, apiGet, apiPost, apiPut } from '@/lib/api';
 import { ApiRequestError } from '@/lib/api';
+import { useAuth } from '@/components/auth/auth-context';
 import type { Candidate, CareerGroup, Hall, Paginated, Session } from '@/lib/types';
 import { PageHeader } from '@/components/ui/page-header';
 import { Button } from '@/components/ui/button';
@@ -84,6 +85,7 @@ function SortHeader({
 export default function CandidatesPage() {
   const searchParams = useSearchParams();
   const router = useRouter();
+  const { user } = useAuth();
   const { success, error } = useToast();
 
   const [query, setQuery] = useState<CandidatesQuery>(() => ({
@@ -101,6 +103,7 @@ export default function CandidatesPage() {
   const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
+    if (!user) return;
     apiGet<{ data: CareerGroup[] }>('/api/career-groups')
       .then((r) => setGroups(r.data))
       .catch(() => undefined);
@@ -110,7 +113,7 @@ export default function CandidatesPage() {
     apiGet<{ data: Session[] }>('/api/sessions')
       .then((r) => setSessions(r.data))
       .catch(() => undefined);
-  }, []);
+  }, [user]);
 
   const fetchCandidates = useCallback(
     async (q: CandidatesQuery) => {
@@ -137,8 +140,8 @@ export default function CandidatesPage() {
   );
 
   useEffect(() => {
-    void fetchCandidates(query);
-  }, [query, fetchCandidates]);
+    if (user) void fetchCandidates(query);
+  }, [user, query, fetchCandidates]);
 
   const setQueryDebounced = useCallback(
     (partial: Partial<CandidatesQuery>) => {

@@ -5,6 +5,7 @@ import Link from 'next/link';
 import { useParams } from 'next/navigation';
 import { ArrowLeft, Armchair, Building2 } from 'lucide-react';
 import { apiGet } from '@/lib/api';
+import { useAuth } from '@/components/auth/auth-context';
 import type { Hall, Seat, Session, Candidate } from '@/lib/types';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card } from '@/components/ui/card';
@@ -23,6 +24,7 @@ interface SeatMapData {
 
 export default function HallDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const { user } = useAuth();
   const [data, setData] = useState<SeatMapData | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [sessionId, setSessionId] = useState('');
@@ -44,17 +46,18 @@ export default function HallDetailPage() {
   }, [id, sessionId]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    if (user) void load();
+  }, [user, load]);
 
   useEffect(() => {
+    if (!user) return;
     apiGet<{ data: Session[] }>('/api/sessions')
       .then((r) => {
         setSessions(r.data);
         if (!sessionId && r.data.length > 0) setSessionId(r.data[0].id);
       })
       .catch(() => undefined);
-  }, []);
+  }, [user]);
 
   useEffect(() => {
     if (selectedSeat?.candidateId) {

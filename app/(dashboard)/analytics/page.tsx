@@ -17,6 +17,7 @@ import {
 } from 'recharts';
 import { ClipboardList, LayoutGrid, Timer, Users, Zap } from 'lucide-react';
 import { apiGet } from '@/lib/api';
+import { useAuth } from '@/components/auth/auth-context';
 import type { Analytics } from '@/lib/types';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardHeader, CardTitle } from '@/components/ui/card';
@@ -33,14 +34,16 @@ const STATUS_COLORS: Record<string, string> = {
 const HALL_COLORS = ['#4f46e5', '#7c3aed', '#9333ea', '#c026d3', '#db2777', '#e11d48'];
 
 export default function AnalyticsPage() {
+  const { user } = useAuth();
   const { error } = useToast();
   const [data, setData] = useState<Analytics | null>(null);
 
   useEffect(() => {
+    if (!user) return;
     apiGet<{ data: Analytics }>('/api/analytics')
       .then((r) => setData(r.data))
       .catch((err) => error('Could not load analytics', err instanceof Error ? err.message : undefined));
-  }, [error]);
+  }, [user, error]);
 
   if (!data) {
     return (

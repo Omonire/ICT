@@ -11,6 +11,7 @@ import {
 } from 'lucide-react';
 import { useApi } from '@/lib/use-api';
 import { apiGet } from '@/lib/api';
+import { useAuth } from '@/components/auth/auth-context';
 import type { Analytics, ScheduleStatus, ActivityEntry } from '@/lib/types';
 import { StatCard } from '@/components/ui/stat-card';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -22,9 +23,10 @@ import { relativeTime } from '@/lib/format';
 import { EmptyState } from '@/components/ui/empty-state';
 
 export default function DashboardPage() {
-  const analytics = useApi<Analytics>(() => apiGet<{ data: Analytics }>('/api/analytics').then((r) => r.data), []);
-  const schedule = useApi<ScheduleStatus>(() => apiGet<{ data: ScheduleStatus }>('/api/schedule/status').then((r) => r.data), []);
-  const activity = useApi<{ data: ActivityEntry[] }>(() => apiGet('/api/activity-log?limit=8'), []);
+  const { user } = useAuth();
+  const analytics = useApi<Analytics>(() => apiGet<{ data: Analytics }>('/api/analytics').then((r) => r.data), [], !!user);
+  const schedule = useApi<ScheduleStatus>(() => apiGet<{ data: ScheduleStatus }>('/api/schedule/status').then((r) => r.data), [], !!user);
+  const activity = useApi<{ data: ActivityEntry[] }>(() => apiGet('/api/activity-log?limit=8'), [], !!user);
 
   if (analytics.loading && !analytics.data) return <PageLoader label="Loading overview…" />;
   if (analytics.error) {

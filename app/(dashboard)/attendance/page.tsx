@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Download, Eye, FileSpreadsheet, Printer } from 'lucide-react';
 import { apiGet, downloadFile } from '@/lib/api';
+import { useAuth } from '@/components/auth/auth-context';
 import type { SheetListing } from '@/lib/types';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card } from '@/components/ui/card';
@@ -14,18 +15,20 @@ import { useToast } from '@/components/ui/toast';
 import { formatDate, formatTime } from '@/lib/format';
 
 export default function AttendancePage() {
+  const { user } = useAuth();
   const { error } = useToast();
   const [sheets, setSheets] = useState<SheetListing[] | null>(null);
   const [downloading, setDownloading] = useState<string | null>(null);
 
   useEffect(() => {
+    if (!user) return;
     apiGet<{ data: SheetListing[] }>('/api/attendance-sheets')
       .then((r) => setSheets(r.data))
       .catch((err) => {
         error('Could not load attendance sheets', err instanceof Error ? err.message : undefined);
         setSheets([]);
       });
-  }, [error]);
+  }, [user, error]);
 
   async function downloadPdf(sheet: SheetListing) {
     setDownloading(sheet.hallId);

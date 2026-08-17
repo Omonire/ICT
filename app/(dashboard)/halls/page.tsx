@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { Building2, MapPin, Pencil, Plus } from 'lucide-react';
 import { apiGet, apiPost, apiPut } from '@/lib/api';
+import { useAuth } from '@/components/auth/auth-context';
 import type { Hall } from '@/lib/types';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card } from '@/components/ui/card';
@@ -66,6 +67,7 @@ function HallCard({ hall, onEdit }: { hall: Hall; onEdit: () => void }) {
 }
 
 export default function HallsPage() {
+  const { user } = useAuth();
   const { success, error } = useToast();
   const [halls, setHalls] = useState<Hall[] | null>(null);
   const [loading, setLoading] = useState(true);
@@ -81,8 +83,8 @@ export default function HallsPage() {
       .finally(() => setLoading(false));
 
   useEffect(() => {
-    void load();
-  }, []);
+    if (user) void load();
+  }, [user]);
 
   function openCreate() {
     setForm({ name: '', capacity: '100', status: 'active' });

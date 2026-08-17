@@ -12,7 +12,8 @@ interface UseApiState<T> {
 
 export function useApi<T>(
   fetcher: () => Promise<T>,
-  deps: unknown[] = []
+  deps: unknown[] = [],
+  enabled: boolean = true
 ): UseApiState<T> {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
@@ -34,6 +35,7 @@ export function useApi<T>(
   }, []);
 
   useEffect(() => {
+    if (!enabled) return;
     let cancelled = false;
     (async () => {
       setLoading(true);
@@ -51,7 +53,7 @@ export function useApi<T>(
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, deps);
+  }, [...deps, enabled]);
 
   return { data, loading, error, refetch: run };
 }

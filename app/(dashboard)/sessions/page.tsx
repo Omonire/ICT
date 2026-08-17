@@ -42,8 +42,8 @@ export default function SessionsPage() {
   }, []);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    if (user) load();
+  }, [user, load]);
 
   async function createSession() {
     if (!form.examDate) return;

@@ -13,6 +13,7 @@ import {
   Users,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api';
+import { useAuth } from '@/components/auth/auth-context';
 import type { ScheduleState, ScheduleStatus, SchedulePreview, Session, PlanSummary } from '@/lib/types';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -54,6 +55,7 @@ function SummaryGrid({ summary }: { summary: PlanSummary }) {
 
 export default function SchedulePage() {
   const router = useRouter();
+  const { user } = useAuth();
   const { success, error } = useToast();
   const [status, setStatus] = useState<ScheduleStatus | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
@@ -98,8 +100,8 @@ export default function SchedulePage() {
   }, []);
 
   useEffect(() => {
-    void loadAll();
-  }, [loadAll]);
+    if (user) void loadAll();
+  }, [user, loadAll]);
 
   useEffect(() => {
     if (status && (status.status === 'draft' || status.status === 'confirmed')) {

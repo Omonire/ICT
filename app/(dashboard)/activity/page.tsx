@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
 import { History } from 'lucide-react';
 import { apiGet } from '@/lib/api';
+import { useAuth } from '@/components/auth/auth-context';
 import type { ActivityEntry, Paginated } from '@/lib/types';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card } from '@/components/ui/card';
@@ -46,16 +47,18 @@ function actionLabel(a: ActivityEntry) {
 }
 
 export default function ActivityPage() {
+  const { user } = useAuth();
   const { error } = useToast();
   const [data, setData] = useState<Paginated<ActivityEntry> | null>(null);
   const [page, setPage] = useState(1);
   const [action, setAction] = useState('');
 
   useEffect(() => {
+    if (!user) return;
     apiGet<Paginated<ActivityEntry>>(`/api/activity-log?page=${page}${action ? `&action=${action}` : ''}`)
       .then(setData)
       .catch((err) => error('Could not load activity log', err instanceof Error ? err.message : undefined));
-  }, [page, action, error]);
+  }, [user, page, action, error]);
 
   return (
     <div>
