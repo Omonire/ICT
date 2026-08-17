@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import { URL } from 'url';
 
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../.env.local') });
@@ -11,9 +12,9 @@ function bool(value: string | undefined, fallback = false): boolean {
 }
 
 function parseDatabaseUrl() {
-  const url = (process.env.DATABASE_URL ?? '').trim();
+  const raw = (process.env.DATABASE_URL ?? '').trim();
 
-  if (!url) {
+  if (!raw) {
     return {
       type: 'postgres' as const,
       host: process.env.DB_HOST ?? 'localhost',
@@ -24,12 +25,19 @@ function parseDatabaseUrl() {
     };
   }
 
+  // Parse the URL so we can inject SSL options that override the
+  // driver's defaults (e.g. Aiven/Neon use self-signed certs).
+  const parsed = new URL(raw);
+  const useSSL = parsed.searchParams.get('sslmode') !== 'disable';
+
   return {
     type: 'postgres' as const,
-    url,
-    ssl: process.env.DB_SSL === 'false'
-      ? false
-      : { rejectUnauthorized: false },
+    host: parsed.hostname,
+    port: Number(parsed.port || 5432),
+    username: decodeURIComponent(parsed.username),
+    password: decodeURIComponent(parsed.password),
+    database: parsed.pathname.replace(/^\//, ''),
+    ssl: useSSL ? { rejectUnauthorized: false } : false,
   };
 }
 
