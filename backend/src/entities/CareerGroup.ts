@@ -13,7 +13,7 @@ export class CareerGroup {
   @Column({ type: 'varchar', length: 255, nullable: true })
   description: string | null = null;
 
-  @Column({ type: 'simple-json', nullable: true })
+  @Column({ type: 'jsonb', nullable: true })
   subjects: string[] = [];
 
   @Column({ type: 'int', default: 0 })

@@ -33,7 +33,7 @@ export class ActivityLog {
   @Column({ name: 'entity_id', type: 'varchar', nullable: true })
   entityId: string | null = null;
 
-  @Column({ name: 'details', type: 'simple-json', nullable: true })
+  @Column({ name: 'details', type: 'jsonb', nullable: true })
   details: Record<string, unknown> | null = null;
 
   @CreateDateColumn({ name: 'timestamp' })

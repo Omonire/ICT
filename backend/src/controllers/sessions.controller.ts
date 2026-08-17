@@ -56,12 +56,10 @@ export const deleteSession = asyncHandler(async (req: Request, res: Response) =>
   await qr.connect();
   await qr.startTransaction();
   try {
-    await qr.query('PRAGMA foreign_keys = OFF');
-    await qr.query(`UPDATE candidates SET assigned_session_id = NULL, assigned_hall_id = NULL, assigned_seat_number = NULL, assigned_exam_date = NULL, status = 'unscheduled' WHERE assigned_session_id = ?`, [sessionId]);
-    await qr.query(`UPDATE seats SET status = 'available', candidate_id = NULL WHERE candidate_id IN (SELECT candidate_id FROM candidate_assignments WHERE session_id = ?)`, [sessionId]);
-    await qr.query(`DELETE FROM candidate_assignments WHERE session_id = ?`, [sessionId]);
-    await qr.query(`DELETE FROM sessions WHERE id = ?`, [sessionId]);
-    await qr.query('PRAGMA foreign_keys = ON');
+    await qr.query(`UPDATE candidates SET assigned_session_id = NULL, assigned_hall_id = NULL, assigned_seat_number = NULL, assigned_exam_date = NULL, status = 'unscheduled' WHERE assigned_session_id = $1`, [sessionId]);
+    await qr.query(`UPDATE seats SET status = 'available', candidate_id = NULL WHERE candidate_id IN (SELECT candidate_id FROM candidate_assignments WHERE session_id = $1)`, [sessionId]);
+    await qr.query(`DELETE FROM candidate_assignments WHERE session_id = $1`, [sessionId]);
+    await qr.query(`DELETE FROM sessions WHERE id = $1`, [sessionId]);
     await qr.commitTransaction();
   } catch (err) {
     await qr.rollbackTransaction();

@@ -32,8 +32,7 @@ router.post(
     await qr.connect();
     await qr.startTransaction();
     try {
-      await qr.query('PRAGMA foreign_keys = OFF');
-      await qr.query(`DELETE FROM activity_log`);
+      await qr.query(`DELETE FROM activity_logs`);
       await qr.query(`DELETE FROM candidate_assignments`);
       await qr.query(`DELETE FROM seats`);
       await qr.query(`DELETE FROM candidates`);
@@ -41,7 +40,6 @@ router.post(
       await qr.query(`DELETE FROM halls`);
       await qr.query(`DELETE FROM career_groups`);
       await qr.query(`DELETE FROM schedule_meta`);
-      await qr.query('PRAGMA foreign_keys = ON');
       await qr.commitTransaction();
     } catch (err) {
       await qr.rollbackTransaction();
@@ -165,13 +163,11 @@ router.post(
     await qr.connect();
     await qr.startTransaction();
     try {
-      await qr.query('PRAGMA foreign_keys = OFF');
       await qr.query(`UPDATE candidates SET assigned_session_id = NULL, assigned_hall_id = NULL, assigned_seat_number = NULL, assigned_exam_date = NULL, status = 'unscheduled'`);
       await qr.query(`DELETE FROM candidate_assignments`);
       await qr.query(`DELETE FROM schedule_meta`);
       await qr.query(`DELETE FROM sessions`);
       await qr.query(`DELETE FROM seats`);
-      await qr.query('PRAGMA foreign_keys = ON');
       await qr.commitTransaction();
     } catch (err) {
       await qr.rollbackTransaction();

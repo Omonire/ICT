@@ -452,9 +452,8 @@ export async function generateSchedule(opts: GenerateOptions): Promise<PlanResul
       );
 
       // Bulk update seat status for occupied seats.
-      // SQLite/Turso caps expression tree depth at 100 — each OR clause adds
-      // depth, so we must keep batches small (≤50 per batch).
-      const SEAT_BATCH = 50;
+      // Batch into chunks to avoid huge parameter lists.
+      const SEAT_BATCH = 500;
       for (let i = 0; i < latestAssignments.length; i += SEAT_BATCH) {
         const batch = latestAssignments.slice(i, i + SEAT_BATCH);
         await qr.manager

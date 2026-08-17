@@ -15,7 +15,7 @@ export class ScheduleMeta {
   @Column({ type: 'varchar', length: 20, default: ScheduleState.NONE })
   status: string = ScheduleState.NONE;
 
-  @Column({ name: 'session_ids', type: 'simple-json', nullable: true })
+  @Column({ name: 'session_ids', type: 'jsonb', nullable: true })
   sessionIds: string[] | null = null;
 
   @Column({ name: 'generated_at', type: 'timestamp', nullable: true })
@@ -27,6 +27,6 @@ export class ScheduleMeta {
   @Column({ name: 'confirmed_by', type: 'varchar', nullable: true })
   confirmedBy: string | null = null;
 
-  @Column({ type: 'simple-json', nullable: true })
+  @Column({ type: 'jsonb', nullable: true })
   summary: Record<string, unknown> | null = null;
 }
