@@ -118,7 +118,8 @@ export default function SchedulePage() {
     try {
       const res = await apiPost<{ data: { status: string; summary: PlanSummary; unassigned: Array<{ id: string; name: string }> } }>(
         '/api/schedule/generate',
-        { sessionIds: [...selected] }
+        { sessionIds: [...selected] },
+        { timeoutMs: 120_000 }
       );
       setOverflow(res.data.unassigned);
       setPreview((prev) => (prev ? { ...prev, status: res.data.status as ScheduleState, summary: res.data.summary } : prev));
@@ -137,7 +138,7 @@ export default function SchedulePage() {
   async function confirm() {
     setConfirming(true);
     try {
-      const res = await apiPost<{ data: { status: string; assignmentCount: number } }>('/api/schedule/confirm');
+      const res = await apiPost<{ data: { status: string; assignmentCount: number } }>('/api/schedule/confirm', undefined, { timeoutMs: 120_000 });
       setStatus((prev) => (prev ? { ...prev, status: res.data.status as ScheduleState } : prev));
       setPreview((prev) => (prev ? { ...prev, status: res.data.status as ScheduleState } : prev));
       success('Schedule confirmed', `${res.data.assignmentCount} assignments are now locked in.`);

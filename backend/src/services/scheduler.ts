@@ -1,5 +1,4 @@
 import { AppDataSource } from '../config/data-source';
-import { In } from 'typeorm';
 import {
   Candidate,
   CandidateStatus,
@@ -8,7 +7,7 @@ import { CandidateAssignment } from '../entities/CandidateAssignment';
 import { Hall } from '../entities/Hall';
 import { Session } from '../entities/Session';
 import { CareerGroup } from '../entities/CareerGroup';
-import { Seat } from '../entities/Seat';
+
 
 export interface AssignmentDraft {
   candidateId: string;
@@ -299,66 +298,89 @@ export interface GenerateOptions {
 }
 
 /**
- * Full generate + persist — batch-optimised for 1M candidates.
+ * Full generate + persist — rewritten for 1M+ candidates.
  *
- * All DB reads happen upfront. The in-memory planner runs in O(C × S × H)
- * with constant-factor savings from contiguous fill.  Persistence uses bulk
- * INSERT/UPDATE inside a single transaction — no per-row queries.
+ * Optimisations vs the original:
+ *  1. Chunked candidate reads (100 K rows) to cap memory pressure.
+ *  2. Assignment INSERT uses raw SQL multi-row VALUES in 10 K batches
+ *     instead of TypeORM QueryBuilder (which builds one enormous statement).
+ *  3. Candidate status updates use a PostgreSQL temporary table + UPDATE …
+ *     FROM — eliminates the N-case CASE expression and its parameter explosion.
+ *  4. Seat updates use the same temp-table pattern — replaces N individual
+ *     UPDATE queries with a single UPDATE … FROM.
  */
 export async function generateSchedule(opts: GenerateOptions): Promise<PlanResult> {
   const ds = AppDataSource;
-  const sessionRepo = ds.getRepository(Session);
-  const hallRepo = ds.getRepository(Hall);
-  const candidateRepo = ds.getRepository(Candidate);
-  const assignmentRepo = ds.getRepository(CandidateAssignment);
-  const groupRepo = ds.getRepository(CareerGroup);
 
   // --- Bulk reads -------------------------------------------------------------------
-  const sessions = await sessionRepo.find({ where: opts.sessionIds.map((id) => ({ id })) });
+  const sessions: Session[] = await ds.query(
+    `SELECT * FROM sessions WHERE id IN (${opts.sessionIds.map((_, i) => `$${i + 1}`).join(',')})`,
+    opts.sessionIds,
+  ) as Session[];
   if (sessions.length !== opts.sessionIds.length) {
     const found = new Set(sessions.map((s) => s.id));
     const missing = opts.sessionIds.filter((id) => !found.has(id));
     throw new Error(`Session(s) not found: ${missing.join(', ')}`);
   }
 
-  const halls = await hallRepo.find();
+  const halls: Hall[] = await ds.query(`SELECT * FROM halls`) as Hall[];
   if (!halls.some((h) => h.status === 'active')) {
     throw new Error('No active halls available for scheduling');
   }
 
-  let candidates = opts.candidateIds
-    ? await candidateRepo.find({ where: opts.candidateIds.map((id) => ({ id })) })
-    : await candidateRepo.find();
+  // Chunked candidate read — 100 K rows per round-trip.
+  const CHUNK = 100_000;
+  const candidates: Candidate[] = [];
+  if (opts.candidateIds) {
+    for (let i = 0; i < opts.candidateIds.length; i += CHUNK) {
+      const slice = opts.candidateIds.slice(i, i + CHUNK);
+      const rows = await ds.query(
+        `SELECT * FROM candidates WHERE id IN (${slice.map((_, j) => `$${j + 1}`).join(',')})`,
+        slice,
+      );
+      candidates.push(...rows);
+    }
+  } else {
+    let offset = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const rows: Candidate[] = await ds.query(
+        `SELECT * FROM candidates ORDER BY id LIMIT $1 OFFSET $2`,
+        [CHUNK, offset],
+      );
+      candidates.push(...rows);
+      if (rows.length < CHUNK) break;
+      offset += CHUNK;
+    }
+  }
 
-  candidates = candidates.filter((c) => c.status !== CandidateStatus.COMPLETED);
+  // Filter out completed candidates.
+  const availableCandidates = candidates.filter((c) => c.status !== CandidateStatus.COMPLETED);
 
-  const groups = await groupRepo.find();
+  const groups: CareerGroup[] = await ds.query(`SELECT * FROM career_groups`) as CareerGroup[];
   const sessionIds = sessions.map((s) => s.id);
 
-  // Candidates who already hold a seat in a session outside the current
-  // selection must not be double-booked — leave them untouched.
-  const outsideAssignments = candidates.length
-    ? await assignmentRepo
-        .createQueryBuilder('a')
-        .where('a.candidateId IN (:...ids)', { ids: candidates.map((c) => c.id) })
-        .andWhere('a.sessionId NOT IN (:...sessionIds)', { sessionIds })
-        .getMany()
-    : [];
-  const outsideSet = new Set(outsideAssignments.map((a) => a.candidateId));
-  const available = candidates.filter((c) => !outsideSet.has(c.id));
+  // Candidates already assigned outside the selected sessions — skip them.
+  let outsideSet = new Set<string>();
+  if (availableCandidates.length > 0) {
+    const outsideIds = await ds.query(
+      `SELECT DISTINCT candidate_id FROM candidate_assignments
+       WHERE candidate_id IN (${availableCandidates.map((_, i) => `$${i + 1}`).join(',')})
+         AND session_id NOT IN (${sessionIds.map((_, i) => `$${availableCandidates.length + i + 1}`).join(',')})`,
+      [...availableCandidates.map((c) => c.id), ...sessionIds],
+    );
+    outsideSet = new Set(outsideIds.map((r: { candidate_id: string }) => r.candidate_id));
+  }
+  const available = availableCandidates.filter((c) => !outsideSet.has(c.id));
 
-  const existing = await assignmentRepo.find({
-    where: sessionIds.map((id) => ({ sessionId: id })),
-  });
+  const existing = await ds.query(
+    `SELECT * FROM candidate_assignments
+     WHERE session_id IN (${sessionIds.map((_, i) => `$${i + 1}`).join(',')})`,
+    sessionIds,
+  ) as CandidateAssignment[];
 
   // --- Plan (pure in-memory) --------------------------------------------------------
-  const result = buildPlan({
-    sessions,
-    halls,
-    candidates: available,
-    groups,
-    existing,
-  });
+  const result = buildPlan({ sessions, halls, candidates: available, groups, existing });
 
   if (opts.strict && result.unassigned.length > 0) {
     throw new Error(
@@ -366,33 +388,37 @@ export async function generateSchedule(opts: GenerateOptions): Promise<PlanResul
     );
   }
 
-  // --- Persist in a single transaction using bulk operations -------------------------
+  // --- Persist in a single transaction using raw SQL bulk ops -----------------------
   const qr = ds.createQueryRunner();
   await qr.connect();
   await qr.startTransaction();
   try {
     // 1. Delete old assignments for selected sessions.
-    await qr.manager.delete(CandidateAssignment, { sessionId: In(sessionIds) });
+    await qr.manager.query(
+      `DELETE FROM candidate_assignments WHERE session_id IN (${sessionIds.map((_, i) => `$${i + 1}`).join(',')})`,
+      sessionIds,
+    );
 
-    // 2. Bulk insert all new assignments in one query.
+    // 2. Bulk insert assignments — multi-row VALUES, 10 K rows per batch.
     if (result.assignments.length > 0) {
-      const now = new Date();
-      const assignmentEntities = result.assignments.map((a) => ({
-        id: a.candidateId + ':' + a.sessionId,
-        candidateId: a.candidateId,
-        sessionId: a.sessionId,
-        hallId: a.hallId,
-        seatNumber: a.seatNumber,
-        assignedAt: now,
-      }));
-      // TypeORM bulk insert — single INSERT with multiple value rows.
-      await qr.manager
-        .createQueryBuilder()
-        .insert()
-        .into(CandidateAssignment)
-        .values(assignmentEntities)
-        .orIgnore()
-        .execute();
+      const now = new Date().toISOString();
+      const INSERT_BATCH = 10_000;
+      for (let i = 0; i < result.assignments.length; i += INSERT_BATCH) {
+        const batch = result.assignments.slice(i, i + INSERT_BATCH);
+        const values: string[] = [];
+        const params: unknown[] = [];
+        let pi = 1;
+        for (const a of batch) {
+          values.push(`($${pi}, $${pi + 1}, $${pi + 2}, $${pi + 3}, $${pi + 4}, $${pi + 5})`);
+          params.push(a.candidateId + ':' + a.sessionId, a.candidateId, a.sessionId, a.hallId, a.seatNumber, now);
+          pi += 6;
+        }
+        await qr.manager.query(
+          `INSERT INTO candidate_assignments (id, candidate_id, session_id, hall_id, seat_number, assigned_at)
+           VALUES ${values.join(',')} ON CONFLICT DO NOTHING`,
+          params,
+        );
+      }
     }
 
     // 3. Build lookup maps for O(1) access.
@@ -404,45 +430,60 @@ export async function generateSchedule(opts: GenerateOptions): Promise<PlanResul
     }
     const sessionById = new Map(sessions.map((s) => [s.id, s]));
 
-    // 4. Bulk update candidate statuses — split into assigned vs unassigned batches.
-    const assignedCandidates: Candidate[] = [];
-    const unassignedCandidates: Candidate[] = [];
-    for (const c of candidates) {
-      const a = assignmentByCandidate.get(c.id);
-      if (a) {
-        c.status = CandidateStatus.SCHEDULED;
-        c.assignedHallId = a.hallId;
-        c.assignedSeatNumber = a.seatNumber;
-        c.assignedSessionId = a.sessionId;
-        c.assignedExamDate = sessionById.get(a.sessionId)!.examDate;
-        assignedCandidates.push(c);
-      } else {
-        c.status = CandidateStatus.UNSCHEDULED;
-        c.assignedHallId = null;
-        c.assignedSeatNumber = null;
-        c.assignedSessionId = null;
-        c.assignedExamDate = null;
-        unassignedCandidates.push(c);
+    // 4. Bulk update candidate statuses via temp table + UPDATE … FROM.
+    if (candidates.length > 0) {
+      await qr.manager.query(`CREATE TEMPORARY TABLE _cu (
+        id VARCHAR PRIMARY KEY,
+        status VARCHAR,
+        assigned_hall_id VARCHAR,
+        assigned_seat_number VARCHAR,
+        assigned_session_id VARCHAR,
+        assigned_exam_date VARCHAR
+      ) ON COMMIT DROP`);
+
+      const CU_BATCH = 50_000;
+      for (let i = 0; i < candidates.length; i += CU_BATCH) {
+        const batch = candidates.slice(i, i + CU_BATCH);
+        const rows: string[] = [];
+        const params: unknown[] = [];
+        let pi = 1;
+        for (const c of batch) {
+          const a = assignmentByCandidate.get(c.id);
+          rows.push(`($${pi}, $${pi + 1}, $${pi + 2}, $${pi + 3}, $${pi + 4}, $${pi + 5})`);
+          params.push(
+            c.id,
+            a ? CandidateStatus.SCHEDULED : CandidateStatus.UNSCHEDULED,
+            a?.hallId ?? null,
+            a?.seatNumber ?? null,
+            a?.sessionId ?? null,
+            a ? sessionById.get(a.sessionId)!.examDate : null,
+          );
+          pi += 6;
+        }
+        await qr.manager.query(
+          `INSERT INTO _cu (id, status, assigned_hall_id, assigned_seat_number, assigned_session_id, assigned_exam_date)
+           VALUES ${rows.join(',')}`,
+          params,
+        );
       }
+
+      await qr.manager.query(
+        `UPDATE candidates SET
+           status            = _cu.status,
+           assigned_hall_id  = _cu.assigned_hall_id,
+           assigned_seat_number = _cu.assigned_seat_number,
+           assigned_session_id  = _cu.assigned_session_id,
+           assigned_exam_date   = _cu.assigned_exam_date
+         FROM _cu WHERE candidates.id = _cu.id`,
+      );
+
+      await qr.manager.query(`DROP TABLE IF EXISTS _cu`);
     }
 
-    // Bulk update in batches of 5000 to avoid exceeding parameter limits.
-    const BATCH = 5000;
-    const allCandidatesToUpdate = [...assignedCandidates, ...unassignedCandidates];
-    for (let i = 0; i < allCandidatesToUpdate.length; i += BATCH) {
-      const batch = allCandidatesToUpdate.slice(i, i + BATCH);
-      await qr.manager.save(batch, { chunk: BATCH });
-    }
-
-    // 5. Refresh seat inventory — bulk reset then bulk mark occupied.
-    await qr.manager
-      .createQueryBuilder()
-      .update(Seat)
-      .set({ status: 'available', candidateId: () => 'NULL' })
-      .execute();
+    // 5. Refresh seat inventory via temp table + UPDATE … FROM.
+    await qr.manager.query(`UPDATE seats SET status = 'available', candidate_id = NULL`);
 
     if (result.assignments.length > 0) {
-      // Find the latest exam date to mark only those seats as occupied.
       let latestDate = '';
       for (const s of sessions) {
         if (s.examDate > latestDate) latestDate = s.examDate;
@@ -451,43 +492,39 @@ export async function generateSchedule(opts: GenerateOptions): Promise<PlanResul
         (a) => sessionById.get(a.sessionId)!.examDate === latestDate,
       );
 
-      // Bulk update seat status for occupied seats.
-      // Batch into chunks to avoid huge parameter lists.
-      const SEAT_BATCH = 500;
-      for (let i = 0; i < latestAssignments.length; i += SEAT_BATCH) {
-        const batch = latestAssignments.slice(i, i + SEAT_BATCH);
-        await qr.manager
-          .createQueryBuilder()
-          .update(Seat)
-          .set({ status: 'occupied' })
-          .where(
-            batch.map((a) => `(hallId = :hid${i} AND seatNumber = :sn${i})`).join(' OR '),
-            Object.fromEntries(
-              batch.flatMap((a, j) => [
-                [`hid${i + j}`, a.hallId],
-                [`sn${i + j}`, a.seatNumber],
-              ]),
-            ),
-          )
-          .execute();
-      }
+      if (latestAssignments.length > 0) {
+        await qr.manager.query(`CREATE TEMPORARY TABLE _su (
+          hall_id VARCHAR,
+          seat_number VARCHAR,
+          candidate_id VARCHAR
+        ) ON COMMIT DROP`);
 
-      // Bulk update candidateId on occupied seats.
-      for (let i = 0; i < latestAssignments.length; i += SEAT_BATCH) {
-        const batch = latestAssignments.slice(i, i + SEAT_BATCH);
-        // Use individual updates for candidateId since we need per-seat assignment.
-        const seatUpdates = batch.map((a) =>
-          qr.manager
-            .createQueryBuilder()
-            .update(Seat)
-            .set({ candidateId: a.candidateId })
-            .where('hallId = :hallId AND seatNumber = :seatNumber', {
-              hallId: a.hallId,
-              seatNumber: a.seatNumber,
-            })
-            .execute(),
+        const SU_BATCH = 50_000;
+        for (let i = 0; i < latestAssignments.length; i += SU_BATCH) {
+          const batch = latestAssignments.slice(i, i + SU_BATCH);
+          const rows: string[] = [];
+          const params: unknown[] = [];
+          let pi = 1;
+          for (const a of batch) {
+            rows.push(`($${pi}, $${pi + 1}, $${pi + 2})`);
+            params.push(a.hallId, a.seatNumber, a.candidateId);
+            pi += 3;
+          }
+          await qr.manager.query(
+            `INSERT INTO _su (hall_id, seat_number, candidate_id) VALUES ${rows.join(',')}`,
+            params,
+          );
+        }
+
+        await qr.manager.query(
+          `UPDATE seats SET
+             status = 'occupied',
+             candidate_id = _su.candidate_id
+           FROM _su
+           WHERE seats.hall_id = _su.hall_id AND seats.seat_number = _su.seat_number`,
         );
-        await Promise.all(seatUpdates);
+
+        await qr.manager.query(`DROP TABLE IF EXISTS _su`);
       }
     }
 
