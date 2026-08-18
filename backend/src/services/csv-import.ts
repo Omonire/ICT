@@ -7,7 +7,12 @@ import { genUuid, nextCandidateId } from '../utils/ids';
 import { importCandidateRow } from '../schemas';
 import { mapProgramToCareerGroup } from './excel-import';
 
-export const REQUIRED_COLUMNS = ['name', 'email', 'careerGroup'] as const;
+/** Sanitize a name segment for use in an email address: remove non-alphanumeric chars */
+function sanitizeForEmail(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40) || 'x';
+}
+
+const REQUIRED_COLUMNS = ['name', 'email', 'careerGroup'] as const;
 
 export interface ImportRow {
   name: string;
@@ -103,7 +108,7 @@ export function parseCandidateCsv(
       
       processedRow = {
         name: `${firstName} ${lastName}`,
-        email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}.${examNo}@student.fut.edu.ng`,
+        email: `${sanitizeForEmail(firstName)}.${sanitizeForEmail(lastName)}.${examNo}@student.fut.edu.ng`,
         matricNo: examNo ? `FUT/2024/${examNo}` : null,
         careerGroup: mapProgramToCareerGroup(program),
       };

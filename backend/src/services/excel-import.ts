@@ -61,6 +61,11 @@ const PROGRAM_TO_CAREER_GROUP: Record<string, string> = {
   'Mathematics': 'Natural Sciences',
 };
 
+/** Sanitize a name segment for use in an email address: remove non-alphanumeric chars */
+function sanitizeForEmail(s: string): string {
+  return s.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40) || 'x';
+}
+
 export function parseExcelCandidates(filePath: string): ExcelCandidateRow[] {
   const workbook = XLSX.readFile(filePath);
   const worksheet = workbook.Sheets[workbook.SheetNames[0]];
@@ -106,7 +111,7 @@ export function generateExcelCandidates(
 
     return {
       name: `${firstName} ${lastName}`,
-      email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}.${examNo}@student.fut.edu.ng`,
+      email: `${sanitizeForEmail(firstName)}.${sanitizeForEmail(lastName)}.${examNo}@student.fut.edu.ng`,
       matricNo: `FUT/2024/${examNo}`,
       careerGroupId: careerGroupId || undefined,
       status: 'unscheduled',
