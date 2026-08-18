@@ -113,4 +113,4 @@ export function pdfUrl(sessionId: string, hallId: string): string {
 
 export function htmlUrl(sessionId: string, hallId: string): string {
   return `/api/attendance-sheets/${sessionId}/${hallId}/html`;
-}
+} 

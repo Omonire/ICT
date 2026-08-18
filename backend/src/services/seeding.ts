@@ -1,4 +1,5 @@
 import bcrypt from 'bcryptjs';
+import * as path from 'path';
 import { AppDataSource, initDatabase } from '../config/data-source';
 import { User, UserRole } from '../entities/User';
 import { CareerGroup } from '../entities/CareerGroup';
@@ -11,6 +12,7 @@ import { ScheduleMeta, ScheduleState } from '../entities/ScheduleMeta';
 import { genUuid, nextCandidateId } from '../utils/ids';
 import { seatLabel } from './scheduler';
 import { logActivity } from './activity-log';
+import { parseExcelCandidates, generateExcelCandidates } from './excel-import';
 
 const CAREER_GROUPS: Array<{
   name: string;
@@ -170,27 +172,52 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
   );
 
   const candidateRepo = ds.getRepository(Candidate);
-  const total = 520;
-  const groupSize = Math.ceil(total / groups.length);
-  const candidates: Candidate[] = [];
-  let id = nextCandidateId([]);
-  for (let i = 0; i < total; i++) {
-    const group = groups[Math.floor(i / groupSize) % groups.length];
-    const first = FIRST_NAMES[i % FIRST_NAMES.length];
-    const last = LAST_NAMES[Math.floor(i / FIRST_NAMES.length) % LAST_NAMES.length];
-    const suffix = String(i + 1).padStart(3, '0');
-    candidates.push(
-      candidateRepo.create({
+  
+  // Load candidates from Excel file
+  let candidates: Candidate[] = [];
+  try {
+    const excelFilePath = path.join(__dirname, '../../data/Exam_Schedulling_4_Python_1.xls');
+    console.log(`Loading candidates from Excel file: ${excelFilePath}`);
+    const excelRows = parseExcelCandidates(excelFilePath);
+    const candidateData = generateExcelCandidates(excelRows, groups);
+    let id = nextCandidateId([]);
+    
+    candidates = candidateData.map((data) => {
+      const candidate = candidateRepo.create({
         id,
-        name: `${first} ${last}`,
-        email: `${first.toLowerCase()}.${last.toLowerCase()}.${suffix}@${EMAIL_DOMAIN}`,
-        matricNo: `FUT/${String(2024 + (i % 2))}/${String(100 + (i % 850)).padStart(3, '0')}`,
-        careerGroupId: group.id,
-        status: 'unscheduled',
-      })
-    );
-    id = nextCandidateId([id]);
+        ...data,
+      });
+      id = nextCandidateId([id]);
+      return candidate;
+    });
+    
+    const total = candidates.length;
+    console.log(`✓ Loaded ${total} candidates from Excel file`);
+  } catch (err) {
+    console.error('Error loading Excel file, falling back to demo data:', err);
+    // Fallback to demo data if Excel file is not found
+    const total = 520;
+    const groupSize = Math.ceil(total / groups.length);
+    let id = nextCandidateId([]);
+    for (let i = 0; i < total; i++) {
+      const group = groups[Math.floor(i / groupSize) % groups.length];
+      const first = FIRST_NAMES[i % FIRST_NAMES.length];
+      const last = LAST_NAMES[Math.floor(i / FIRST_NAMES.length) % LAST_NAMES.length];
+      const suffix = String(i + 1).padStart(3, '0');
+      candidates.push(
+        candidateRepo.create({
+          id,
+          name: `${first} ${last}`,
+          email: `${first.toLowerCase()}.${last.toLowerCase()}.${suffix}@${EMAIL_DOMAIN}`,
+          matricNo: `FUT/${String(2024 + (i % 2))}/${String(100 + (i % 850)).padStart(3, '0')}`,
+          careerGroupId: group.id,
+          status: 'unscheduled',
+        })
+      );
+      id = nextCandidateId([id]);
+    }
   }
+  
   await candidateRepo.save(candidates);
   await groupRepo.save(
     groups.map((g) => {
@@ -278,12 +305,12 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
     action: 'seeded',
     userId: admin.id,
     entityType: 'system',
-    details: { candidates: total, halls: halls.length, sessions: sessions.length, ms: Date.now() - started },
+    details: { candidates: candidates.length, halls: halls.length, sessions: sessions.length, ms: Date.now() - started },
   });
 
   return {
-    candidateCount: total,
-    message: `Seeded demo environment in ${Date.now() - started}ms: ${total} candidates, ${halls.length} halls, ${sessions.length} sessions, ${assignments.length} pre-assigned.`,
+    candidateCount: candidates.length,
+    message: `Seeded demo environment in ${Date.now() - started}ms: ${candidates.length} candidates, ${halls.length} halls, ${sessions.length} sessions, ${assignments.length} pre-assigned.`,
   };
 }
 
