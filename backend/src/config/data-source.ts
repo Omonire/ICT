@@ -28,6 +28,16 @@ export const AppDataSource = new DataSource({
   logging: false,
   synchronize: true,
   ...dbConfig,
+  // Keep pool tiny on serverless — each cold start spawns its own pool.
+  // Neon/Supabase free tiers cap at 20-50 connections total.
+  extra: {
+    pool: {
+      min: 0,
+      max: 3,
+      acquireTimeoutMillis: 10_000,
+      idleTimeoutMillis: 10_000,
+    },
+  },
 });
 
 export async function initDatabase(): Promise<DataSource> {
