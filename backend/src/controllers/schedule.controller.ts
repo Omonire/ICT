@@ -43,6 +43,11 @@ export const capacity = asyncHandler(async (req: Request, res: Response) => {
       capacityPerSession,
       activeHallCount: activeHalls.length,
       selectedSessionCount: ids.length,
+      halls: activeHalls.map((h) => ({
+        id: h.id,
+        name: h.name,
+        capacity: h.capacity,
+      })),
     },
   });
 });

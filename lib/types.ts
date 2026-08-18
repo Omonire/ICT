@@ -163,6 +163,7 @@ export interface ScheduleCapacity {
   capacityPerSession: number;
   activeHallCount: number;
   selectedSessionCount: number;
+  halls: Array<{ id: string; name: string; capacity: number }>;
 }
 
 export interface ScheduleStatus {

@@ -357,6 +357,21 @@ export default function SchedulePage() {
                     ⚠ {capacity.totalCandidates.toLocaleString()} candidates exceed {capacity.totalCapacity.toLocaleString()} available seats. {(capacity.totalCandidates - capacity.totalCapacity).toLocaleString()} will be unassigned.
                   </p>
                 )}
+                {capacity.halls.length > 0 && (
+                  <div className="mt-3 border-t border-slate-200 pt-3">
+                    <p className="mb-2 text-[11px] font-semibold uppercase text-slate-500">Seat breakdown per hall (×{capacity.selectedSessionCount} session{capacity.selectedSessionCount !== 1 ? 's' : ''})</p>
+                    <div className="flex flex-wrap gap-2">
+                      {capacity.halls.map((h) => (
+                        <span key={h.id} className="inline-flex items-center gap-1 rounded-md bg-white px-2 py-1 text-[12px] text-slate-700 shadow-sm">
+                          <span className="font-medium">{h.name}</span>
+                          <span className="text-slate-400">·</span>
+                          <span className="font-mono text-purple-600">{(h.capacity * capacity.selectedSessionCount).toLocaleString()}</span>
+                          <span className="text-slate-400">seats</span>
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </CardContent>
@@ -371,11 +386,12 @@ export default function SchedulePage() {
             <div className="flex items-start gap-3 rounded-lg border-[0.5px] border-amber-200 bg-amber-50 px-4 py-3">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
               <div className="text-[13px] text-amber-800">
-                <p className="font-semibold">Overflow detected — {overflow.length} candidates could not be seated.</p>
+                <p className="font-semibold">Overflow — {overflow.length} candidates could not be seated</p>
                 <p className="mt-0.5">
-                  {overflow.slice(0, 6).map((c) => c.id).join(', ')}
-                  {overflow.length > 6 && ` +${overflow.length - 6} more`}. Add more sessions or a hall with spare
-                  capacity and regenerate.
+                  All {preview.summary?.assignedCount.toLocaleString() ?? 0} seats across {preview.summary?.hallsUsed ?? 0} halls are occupied. The remaining {overflow.length} candidates have no available seat.
+                </p>
+                <p className="mt-1 text-[12px] text-amber-700">
+                  To seat everyone: add more halls, create additional sessions, or increase hall capacity.
                 </p>
               </div>
             </div>
