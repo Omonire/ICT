@@ -109,7 +109,7 @@ export default function ImportPage() {
                 Upload an Excel file with columns: <span className="font-mono text-[12px] text-slate-800">{REQUIRED_COLUMNS.join(', ')}</span>.
                 Or use the exam format with First Name, Last Name, Exam No, and First Choice columns.
                 The <span className="font-mono">careerGroup</span> value must match a career group name
-                (e.g. "Engineering").
+                (e.g. &quot;Engineering&quot;).
               </div>
             </div>
 
