@@ -330,9 +330,21 @@ export async function generateSchedule(opts: GenerateOptions): Promise<PlanResul
     throw new Error('No active halls available for scheduling');
   }
 
-  let candidates = opts.candidateIds
-    ? await candidateRepo.find({ where: opts.candidateIds.map((id) => ({ id })) })
-    : await candidateRepo.find();
+  let candidates: Candidate[] = [];
+  if (opts.candidateIds) {
+    candidates = await candidateRepo.find({ where: opts.candidateIds.map((id) => ({ id })) });
+  } else {
+    // Chunk reads to avoid memory/timeout issues on large datasets
+    const CHUNK = 5000;
+    let offset = 0;
+    while (true) {
+      const batch = await candidateRepo.find({ skip: offset, take: CHUNK });
+      if (batch.length === 0) break;
+      candidates = candidates.concat(batch);
+      if (batch.length < CHUNK) break;
+      offset += CHUNK;
+    }
+  }
 
   candidates = candidates.filter((c) => c.status !== CandidateStatus.COMPLETED);
 
@@ -375,10 +387,10 @@ export async function generateSchedule(opts: GenerateOptions): Promise<PlanResul
       sessionIds,
     );
 
-    // 2. Bulk insert assignments — multi-row VALUES, 10 K rows per batch.
+    // 2. Bulk insert assignments — multi-row VALUES, 5 K rows per batch.
     if (result.assignments.length > 0) {
       const now = new Date().toISOString();
-      const INSERT_BATCH = 10_000;
+      const INSERT_BATCH = 5_000;
       for (let i = 0; i < result.assignments.length; i += INSERT_BATCH) {
         const batch = result.assignments.slice(i, i + INSERT_BATCH);
         const values: string[] = [];
