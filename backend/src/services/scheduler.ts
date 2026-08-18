@@ -429,7 +429,8 @@ export async function generateSchedule(opts: GenerateOptions): Promise<PlanResul
         assigned_exam_date VARCHAR
       ) ON COMMIT DROP`);
 
-      const CU_BATCH = 50_000;
+      // PostgreSQL max params per query = 65,535; 6 params per row ⇒ max 10,922 rows
+      const CU_BATCH = 10_000;
       for (let i = 0; i < candidates.length; i += CU_BATCH) {
         const batch = candidates.slice(i, i + CU_BATCH);
         const rows: string[] = [];
@@ -487,7 +488,8 @@ export async function generateSchedule(opts: GenerateOptions): Promise<PlanResul
           candidate_id VARCHAR
         ) ON COMMIT DROP`);
 
-        const SU_BATCH = 50_000;
+        // 3 params per row ⇒ max 21,845 rows
+        const SU_BATCH = 21_000;
         for (let i = 0; i < latestAssignments.length; i += SU_BATCH) {
           const batch = latestAssignments.slice(i, i + SU_BATCH);
           const rows: string[] = [];
