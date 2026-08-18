@@ -173,11 +173,38 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
 
   const candidateRepo = ds.getRepository(Candidate);
   
-  // Load candidates from Excel file
+  // Load candidates from Excel file (try multiple paths)
   let candidates: Candidate[] = [];
   try {
-    const excelFilePath = path.join(__dirname, '../../data/Exam_Schedulling_4_Python_1.xls');
-    console.log(`Loading candidates from Excel file: ${excelFilePath}`);
+    // Try to find Excel file in these locations (in order):
+    // 1. public/ (Vercel deployment)
+    // 2. backend/data/ (local development)
+    const excelFileName = 'Exam_Schedulling_4_Python_1.xls';
+    const possiblePaths = [
+      path.join(__dirname, '../../public', excelFileName), // Vercel
+      path.join(__dirname, '../../data', excelFileName),   // Local dev
+      path.join(__dirname, '../../../public', excelFileName), // Alternative Vercel path
+      path.join(__dirname, '../../../data', excelFileName),   // Alternative local path
+    ];
+    
+    let excelFilePath: string | null = null;
+    const fs = await import('fs');
+    for (const candidatePath of possiblePaths) {
+      try {
+        if (fs.existsSync(candidatePath)) {
+          excelFilePath = candidatePath;
+          break;
+        }
+      } catch {
+        continue;
+      }
+    }
+    
+    if (!excelFilePath) {
+      throw new Error(`Excel file not found in any expected location: ${possiblePaths.join(', ')}`);
+    }
+    
+    console.log(`✓ Found Excel file at: ${excelFilePath}`);
     const excelRows = parseExcelCandidates(excelFilePath);
     const candidateData = generateExcelCandidates(excelRows, groups);
     let id = nextCandidateId([]);
@@ -192,9 +219,9 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
     });
     
     const total = candidates.length;
-    console.log(`✓ Loaded ${total} candidates from Excel file`);
+    console.log(`✓ Loaded ${total} candidates from Excel file (PRIORITY DATA SOURCE)`);
   } catch (err) {
-    console.error('Error loading Excel file, falling back to demo data:', err);
+    console.warn('⚠️ Excel file not found, falling back to demo data:', err instanceof Error ? err.message : err);
     // Fallback to demo data if Excel file is not found
     const total = 520;
     const groupSize = Math.ceil(total / groups.length);
