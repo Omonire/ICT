@@ -157,6 +157,14 @@ export interface PlanSummary {
 
 export type ScheduleState = 'none' | 'draft' | 'confirmed';
 
+export interface ScheduleCapacity {
+  totalCandidates: number;
+  totalCapacity: number;
+  capacityPerSession: number;
+  activeHallCount: number;
+  selectedSessionCount: number;
+}
+
 export interface ScheduleStatus {
   status: ScheduleState;
   sessionIds: string[];

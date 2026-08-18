@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api';
 import { useAuth } from '@/components/auth/auth-context';
-import type { ScheduleState, ScheduleStatus, SchedulePreview, Session, PlanSummary } from '@/lib/types';
+import type { ScheduleState, ScheduleStatus, SchedulePreview, ScheduleCapacity, Session, PlanSummary } from '@/lib/types';
 import { PageHeader } from '@/components/ui/page-header';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
@@ -67,6 +67,7 @@ export default function SchedulePage() {
   const [clearOpen, setClearOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [overflow, setOverflow] = useState<Array<{ id: string; name: string }>>([]);
+  const [capacity, setCapacity] = useState<ScheduleCapacity | null>(null);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -108,6 +109,17 @@ export default function SchedulePage() {
       void loadPreview();
     }
   }, [status?.status, loadPreview]);
+
+  useEffect(() => {
+    if (selected.size === 0) {
+      setCapacity(null);
+      return;
+    }
+    const ids = [...selected].join(',');
+    apiGet<{ data: ScheduleCapacity }>(`/api/schedule/capacity?sessionIds=${ids}`)
+      .then((res) => setCapacity(res.data))
+      .catch(() => setCapacity(null));
+  }, [selected]);
 
   async function generate() {
     if (selected.size === 0) {
@@ -306,6 +318,47 @@ export default function SchedulePage() {
                 );
               })}
             </div>
+
+            {capacity && selected.size > 0 && (
+              <div className="mt-4 rounded-lg border-[0.5px] border-slate-200 bg-slate-50 px-4 py-3">
+                <div className="mb-2 flex items-center gap-2">
+                  <Users className="h-4 w-4 text-slate-500" />
+                  <p className="text-[13px] font-semibold text-slate-700">Capacity preview</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div>
+                    <p className="text-lg font-semibold text-slate-900">{capacity.totalCandidates.toLocaleString()}</p>
+                    <p className="text-[11px] text-slate-500">Candidates</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-semibold text-purple-700">{capacity.totalCapacity.toLocaleString()}</p>
+                    <p className="text-[11px] text-slate-500">Total seats ({capacity.selectedSessionCount} session{capacity.selectedSessionCount !== 1 ? 's' : ''})</p>
+                  </div>
+                  <div>
+                    <p className="text-lg font-semibold text-slate-700">{capacity.activeHallCount}</p>
+                    <p className="text-[11px] text-slate-500">Active halls</p>
+                  </div>
+                  <div>
+                    {capacity.totalCandidates > capacity.totalCapacity ? (
+                      <>
+                        <p className="text-lg font-semibold text-amber-600">{(capacity.totalCandidates - capacity.totalCapacity).toLocaleString()}</p>
+                        <p className="text-[11px] text-amber-600">Will overflow</p>
+                      </>
+                    ) : (
+                      <>
+                        <p className="text-lg font-semibold text-emerald-600">{(capacity.totalCapacity - capacity.totalCandidates).toLocaleString()}</p>
+                        <p className="text-[11px] text-emerald-600">Spare seats</p>
+                      </>
+                    )}
+                  </div>
+                </div>
+                {capacity.totalCandidates > capacity.totalCapacity && (
+                  <p className="mt-2 text-[12px] text-amber-600">
+                    ⚠ {capacity.totalCandidates.toLocaleString()} candidates exceed {capacity.totalCapacity.toLocaleString()} available seats. {(capacity.totalCandidates - capacity.totalCapacity).toLocaleString()} will be unassigned.
+                  </p>
+                )}
+              </div>
+            )}
           </CardContent>
         </Card>
       )}

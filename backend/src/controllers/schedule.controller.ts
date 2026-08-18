@@ -19,6 +19,34 @@ async function getOrCreateMeta(): Promise<ScheduleMeta> {
   return meta;
 }
 
+export const capacity = asyncHandler(async (req: Request, res: Response) => {
+  const sessionIds = (req.query.sessionIds as string) ?? '';
+  const ids = sessionIds ? sessionIds.split(',').filter(Boolean) : [];
+
+  const candidateRepo = AppDataSource.getRepository(Candidate);
+  const hallRepo = AppDataSource.getRepository(Hall);
+
+  const totalCandidates = await candidateRepo
+    .createQueryBuilder('c')
+    .where('c.status != :status', { status: CandidateStatus.COMPLETED })
+    .getCount();
+
+  const halls = await hallRepo.find();
+  const activeHalls = halls.filter((h) => h.status === 'active');
+  const capacityPerSession = activeHalls.reduce((sum, h) => sum + h.capacity, 0);
+  const totalCapacity = capacityPerSession * Math.max(ids.length, 1);
+
+  res.json({
+    data: {
+      totalCandidates,
+      totalCapacity,
+      capacityPerSession,
+      activeHallCount: activeHalls.length,
+      selectedSessionCount: ids.length,
+    },
+  });
+});
+
 export const getStatus = asyncHandler(async (_req: Request, res: Response) => {
   const meta = await getOrCreateMeta();
   const assignmentCount = await AppDataSource.getRepository(CandidateAssignment).count();

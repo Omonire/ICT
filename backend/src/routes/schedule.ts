@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import {
+  capacity,
   clear,
   confirm,
   generate,
@@ -12,6 +13,7 @@ import { scheduleGenerateSchema } from '../schemas';
 
 const router = Router();
 
+router.get('/capacity', capacity);
 router.get('/status', getStatus);
 router.get('/preview', preview);
 router.post('/generate', requireRole('superadmin', 'admin', 'operator'), validateBody(scheduleGenerateSchema), generate);
