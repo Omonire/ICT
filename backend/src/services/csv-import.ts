@@ -213,6 +213,7 @@ export async function commitImport(importId: string): Promise<ImportCommitResult
 
   const imported: Candidate[] = [];
   const errors: Array<{ email: string; reason: string }> = [];
+  const modifiedGroups = new Set<string>();
 
   for (const row of entry.rows) {
     if (existingEmails.has(row.email)) {
@@ -237,10 +238,21 @@ export async function commitImport(importId: string): Promise<ImportCommitResult
     existingEmails.add(row.email);
     nextId = nextCandidateId([nextId]);
     group.candidateCount += 1;
+    modifiedGroups.add(group.id);
   }
 
-  await candidateRepo.save(imported);
-  await groupRepo.save(groups);
+  // Insert in chunks of 500 to avoid timeouts on large imports
+  const CHUNK = 500;
+  for (let i = 0; i < imported.length; i += CHUNK) {
+    await candidateRepo.save(imported.slice(i, i + CHUNK));
+  }
+
+  // Only save the career groups that were actually modified
+  const groupsToSave = groups.filter((g) => modifiedGroups.has(g.id));
+  if (groupsToSave.length > 0) {
+    await groupRepo.save(groupsToSave);
+  }
+
   pendingImports.delete(importId);
 
   return {
