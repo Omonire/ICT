@@ -12,7 +12,7 @@ import {
   UploadCloud,
   Users,
 } from 'lucide-react';
-import { uploadCsv, apiPost } from '@/lib/api';
+import { uploadExcel, apiPost } from '@/lib/api';
 import { ApiRequestError } from '@/lib/api';
 import type { ImportPreview, ImportCommit } from '@/lib/types';
 import { PageHeader } from '@/components/ui/page-header';
@@ -26,19 +26,11 @@ type Step = 'upload' | 'review' | 'done';
 const REQUIRED_COLUMNS = ['name', 'email', 'careerGroup'];
 
 function downloadTemplate() {
-  const rows = [
-    'name,email,careerGroup,matricNo',
-    'Adaeze Adeyemi,adaeze.adeyemi@student.fut.edu.ng,Management Sciences,FUT/2025/101',
-    'Ibrahim Garba,ibrahim.garba@student.fut.edu.ng,Engineering,FUT/2025/102',
-    'Ngozi Okafor,ngozi.okafor@student.fut.edu.ng,Natural Sciences,FUT/2025/103',
-  ];
-  const blob = new Blob([rows.join('\n')], { type: 'text/csv' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'candidates-template.csv';
-  a.click();
-  URL.revokeObjectURL(url);
+  // Download the Excel template from public folder
+  const link = document.createElement('a');
+  link.href = '/Exam_Schedulling_4_Python_1.xls';
+  link.download = 'candidates-template.xls';
+  link.click();
 }
 
 export default function ImportPage() {
@@ -57,8 +49,8 @@ export default function ImportPage() {
   async function handleFile(file: File | undefined) {
     setFileError(null);
     if (!file) return;
-    if (!/\.csv$/i.test(file.name)) {
-      setFileError('Only .csv files are supported. Export your spreadsheet as CSV and try again.');
+    if (!/\.(xlsx?|xls)$/i.test(file.name)) {
+      setFileError('Only .xlsx or .xls files are supported. Export your spreadsheet as Excel and try again.');
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
@@ -68,7 +60,7 @@ export default function ImportPage() {
     setFileName(file.name);
     setUploading(true);
     try {
-      const res = await uploadCsv<ImportPreview>(file);
+      const res = await uploadExcel<ImportPreview>(file);
       setPreview(res);
       setStep('review');
     } catch (err) {
@@ -100,7 +92,7 @@ export default function ImportPage() {
     <div className="mx-auto max-w-3xl">
       <PageHeader
         title="Import candidates"
-        description="Upload a CSV, review the validation report, then commit the import."
+        description="Upload an Excel file, review the validation report, then commit the import."
         actions={
           <Button variant="outline" onClick={() => router.push('/candidates')}>
             <ArrowLeft className="h-4 w-4" /> Back to candidates
@@ -114,10 +106,10 @@ export default function ImportPage() {
             <div className="mb-5 flex items-start gap-3 rounded-lg border-[0.5px] border-slate-200 bg-slate-50 px-4 py-3">
               <FileSpreadsheet className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
               <div className="text-[13px] leading-relaxed text-slate-600">
-                Your CSV needs these columns:{' '}
-                <span className="font-mono text-[12px] text-slate-800">{REQUIRED_COLUMNS.join(', ')}</span>.
+                Upload an Excel file with columns: <span className="font-mono text-[12px] text-slate-800">{REQUIRED_COLUMNS.join(', ')}</span>.
+                Or use the exam format with First Name, Last Name, Exam No, and First Choice columns.
                 The <span className="font-mono">careerGroup</span> value must match a career group name
-                (e.g. “Engineering”). A <span className="font-mono">matricNo</span> column is optional.
+                (e.g. "Engineering").
               </div>
             </div>
 
@@ -142,17 +134,17 @@ export default function ImportPage() {
               </div>
               <div className="text-center">
                 <p className="text-[15px] font-semibold text-slate-800">
-                  {uploading ? 'Parsing file…' : 'Drop your CSV here'}
+                  {uploading ? 'Parsing file…' : 'Drop your Excel file here'}
                 </p>
                 <p className="mt-1 text-[13px] text-slate-500">
-                  or <span className="font-medium text-purple-700">browse</span> your computer · max 10 MB
+                  or <span className="font-medium text-purple-700">browse</span> your computer · .xlsx or .xls · max 10 MB
                 </p>
               </div>
             </button>
             <input
               ref={fileRef}
               type="file"
-              accept=".csv,text/csv"
+              accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel"
               className="hidden"
               onChange={(e) => void handleFile(e.target.files?.[0])}
             />
@@ -166,7 +158,7 @@ export default function ImportPage() {
 
             <div className="mt-5 flex items-center justify-center">
               <Button variant="outline" onClick={downloadTemplate}>
-                <Download className="h-4 w-4" /> Download CSV template
+                <Download className="h-4 w-4" /> Download Excel template
               </Button>
             </div>
           </div>

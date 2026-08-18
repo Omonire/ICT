@@ -143,7 +143,7 @@ export const deleteCandidate = asyncHandler(async (req: Request, res: Response) 
 
 export const importPreview = asyncHandler(async (req: Request, res: Response) => {
   const file = req.file;
-  if (!file) throw AppError.badRequest('Attach a CSV file to import');
+  if (!file) throw AppError.badRequest('Attach an Excel file to import');
   const result = parseCandidateCsv(file.buffer, file.originalname);
   await logActivity({
     action: 'import.preview',

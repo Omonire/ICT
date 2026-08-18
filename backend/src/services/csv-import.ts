@@ -1,10 +1,11 @@
-import { parse } from 'csv-parse/sync';
+import * as XLSX from 'xlsx';
 import { AppDataSource } from '../config/data-source';
 import { CareerGroup } from '../entities/CareerGroup';
 import { Candidate } from '../entities/Candidate';
 import { AppError } from '../utils/errors';
 import { genUuid, nextCandidateId } from '../utils/ids';
 import { importCandidateRow } from '../schemas';
+import { mapProgramToCareerGroup } from './excel-import';
 
 export const REQUIRED_COLUMNS = ['name', 'email', 'careerGroup'] as const;
 
@@ -46,36 +47,40 @@ const pendingImports = new Map<string, StoredImport>();
 
 const IMPORT_TTL_MS = 10 * 60 * 1000; // 10 minutes
 
+/**
+ * Parse XLSX file and extract candidate data
+ * Supports both standard format (name, email, careerGroup, matricNo)
+ * and exam format (First Name, Last Name, First Choice program, Exam No)
+ */
 export function parseCandidateCsv(
   buffer: Buffer,
   fileName: string
 ): ImportPreviewResult {
-  let rawRows: Record<string, string>[];
+  let rawRows: Record<string, any>[];
   try {
-    rawRows = parse(buffer, {
-      columns: (header: string[]) =>
-        header.map((h) => normalizeHeader(h)),
-      skip_empty_lines: true,
-      trim: true,
-      bom: true,
-      relax_column_count: true,
-    }) as Record<string, string>[];
+    const workbook = XLSX.read(buffer, { type: 'buffer' });
+    const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+    rawRows = XLSX.utils.sheet_to_json(worksheet) as Record<string, any>[];
   } catch (err) {
     throw AppError.badRequest(
-      'The uploaded file could not be parsed as CSV. Save it as a .csv file and try again.'
+      'The uploaded file could not be parsed as Excel. Ensure it is a valid .xlsx file.'
     );
   }
 
   if (rawRows.length === 0) {
-    throw AppError.badRequest('The CSV file contains no data rows.');
+    throw AppError.badRequest('The Excel file contains no data rows.');
   }
 
   const columns = Object.keys(rawRows[0]);
-  const missingColumns = REQUIRED_COLUMNS.filter((col) => !columns.includes(col));
+  
+  // Check if it's exam format or standard format
+  const isExamFormat = columns.some(col => col.includes('First Name') || col.includes('Last Name') || col.includes('Exam No'));
+  
+  const missingColumns = REQUIRED_COLUMNS.filter((col) => !columns.includes(col) && !isExamFormat);
 
-  if (missingColumns.length > 0) {
+  if (missingColumns.length > 0 && !isExamFormat) {
     throw AppError.badRequest(
-      `Required column(s) missing: ${missingColumns.join(', ')}. Your CSV needs: ${REQUIRED_COLUMNS.join(', ')}`,
+      `Required column(s) missing: ${missingColumns.join(', ')}. Your file needs: ${REQUIRED_COLUMNS.join(', ')} OR the exam format columns.`,
       { missingColumns, columns }
     );
   }
@@ -87,11 +92,28 @@ export function parseCandidateCsv(
 
   rawRows.forEach((raw, index) => {
     const rowNumber = index + 2; // +1 for header
+    
+    // Handle exam format
+    let processedRow: any = raw;
+    if (isExamFormat && raw['First Name'] && raw['Last Name']) {
+      const firstName = String(raw['First Name']).trim();
+      const lastName = String(raw['Last Name']).trim();
+      const examNo = raw['Exam No'] ? String(raw['Exam No']).padStart(8, '0') : '';
+      const program = raw['First Choice'] || '';
+      
+      processedRow = {
+        name: `${firstName} ${lastName}`,
+        email: `${firstName.toLowerCase()}.${lastName.toLowerCase()}.${examNo}@student.fut.edu.ng`,
+        matricNo: examNo ? `FUT/2024/${examNo}` : null,
+        careerGroup: mapProgramToCareerGroup(program),
+      };
+    }
+    
     const parsed = importCandidateRow.safeParse({
-      name: raw.name,
-      email: (raw.email ?? '').toLowerCase().trim(),
-      matricNo: raw.matricNo || raw.matric || raw.regNo || null,
-      careerGroup: raw.careerGroup,
+      name: processedRow.name || raw.name,
+      email: ((processedRow.email || raw.email) ?? '').toLowerCase().trim(),
+      matricNo: processedRow.matricNo || raw.matricNo || raw.matric || raw.regNo || null,
+      careerGroup: processedRow.careerGroup || raw.careerGroup,
     });
 
     if (!parsed.success) {

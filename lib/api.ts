@@ -107,6 +107,10 @@ export function uploadCsv<T>(file: File): Promise<T> {
   }).then((r) => r.data);
 }
 
+export function uploadExcel<T>(file: File): Promise<T> {
+  return uploadCsv<T>(file);
+}
+
 export function pdfUrl(sessionId: string, hallId: string): string {
   return `/api/attendance-sheets/${sessionId}/${hallId}/pdf`;
 }
