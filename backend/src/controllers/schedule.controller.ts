@@ -202,6 +202,113 @@ export const confirm = asyncHandler(async (req: Request, res: Response) => {
   res.json({ data: { status: ScheduleState.CONFIRMED, confirmedAt: meta.confirmedAt, assignmentCount: count } });
 });
 
+export const approve = asyncHandler(async (req: Request, res: Response) => {
+  const { mode, candidateIds } = req.body as { mode: 'auto' | 'manual'; candidateIds?: string[] };
+  const meta = await getOrCreateMeta();
+  if (meta.status !== ScheduleState.DRAFT && meta.status !== ScheduleState.CONFIRMED) {
+    throw AppError.badRequest('Generate a schedule before approving it');
+  }
+
+  const assignmentRepo = AppDataSource.getRepository(CandidateAssignment);
+  const candidateRepo = AppDataSource.getRepository(Candidate);
+
+  if (mode === 'manual') {
+    if (!candidateIds || candidateIds.length === 0) {
+      throw AppError.badRequest('Select at least one candidate to approve');
+    }
+
+    const allAssignments = await assignmentRepo.find();
+    const toRemove = allAssignments.filter((a) => !candidateIds.includes(a.candidateId));
+    const toKeep = allAssignments.filter((a) => candidateIds.includes(a.candidateId));
+
+    const ds = AppDataSource;
+    const qr = ds.createQueryRunner();
+    await qr.connect();
+    await qr.startTransaction();
+    try {
+      for (const a of toRemove) {
+        await qr.query(
+          `UPDATE candidates SET status = $1, assigned_hall_id = NULL, assigned_seat_number = NULL, assigned_session_id = NULL, assigned_exam_date = NULL WHERE id = $2`,
+          [CandidateStatus.UNSCHEDULED, a.candidateId]
+        );
+        await qr.query(
+          `UPDATE seats SET status = $1, candidate_id = NULL WHERE hall_id = $2 AND seat_number = $3`,
+          ['available', a.hallId, a.seatNumber]
+        );
+        await qr.query(`DELETE FROM candidate_assignments WHERE id = $1`, [a.id]);
+      }
+
+      for (const a of toKeep) {
+        const candidate = await qr.manager.findOne(Candidate, { where: { id: a.candidateId } });
+        if (candidate) {
+          candidate.status = CandidateStatus.SCHEDULED;
+          candidate.assignedHallId = a.hallId;
+          candidate.assignedSeatNumber = a.seatNumber;
+          candidate.assignedSessionId = a.sessionId;
+          await qr.manager.save(candidate);
+        }
+        await qr.query(
+          `UPDATE seats SET status = $1, candidate_id = $2 WHERE hall_id = $3 AND seat_number = $4`,
+          ['occupied', a.candidateId, a.hallId, a.seatNumber]
+        );
+      }
+
+      meta.status = ScheduleState.CONFIRMED;
+      meta.confirmedAt = new Date();
+      meta.confirmedBy = req.user?.id ?? null;
+      await qr.manager.save(meta);
+      await qr.commitTransaction();
+    } catch (err) {
+      await qr.rollbackTransaction();
+      throw err;
+    } finally {
+      await qr.release();
+    }
+
+    await logActivity({
+      action: 'schedule.approved',
+      userId: req.user?.id ?? null,
+      entityType: 'schedule',
+      details: { mode, approved: toKeep.length, removed: toRemove.length },
+    });
+
+    res.json({ data: { status: ScheduleState.CONFIRMED, assignmentCount: toKeep.length, removedCount: toRemove.length } });
+  } else {
+    const count = await assignmentRepo.count();
+    if (count === 0) throw AppError.badRequest('The draft schedule has no assignments to approve');
+
+    const allAssignments = await assignmentRepo.find();
+    for (const a of allAssignments) {
+      const candidate = await candidateRepo.findOne({ where: { id: a.candidateId } });
+      if (candidate) {
+        candidate.status = CandidateStatus.SCHEDULED;
+        candidate.assignedHallId = a.hallId;
+        candidate.assignedSeatNumber = a.seatNumber;
+        candidate.assignedSessionId = a.sessionId;
+        await candidateRepo.save(candidate);
+      }
+      await AppDataSource.query(
+        `UPDATE seats SET status = $1, candidate_id = $2 WHERE hall_id = $3 AND seat_number = $4`,
+        ['occupied', a.candidateId, a.hallId, a.seatNumber]
+      );
+    }
+
+    meta.status = ScheduleState.CONFIRMED;
+    meta.confirmedAt = new Date();
+    meta.confirmedBy = req.user?.id ?? null;
+    await AppDataSource.getRepository(ScheduleMeta).save(meta);
+
+    await logActivity({
+      action: 'schedule.approved',
+      userId: req.user?.id ?? null,
+      entityType: 'schedule',
+      details: { mode: 'auto', approved: count },
+    });
+
+    res.json({ data: { status: ScheduleState.CONFIRMED, assignmentCount: count, removedCount: 0 } });
+  }
+});
+
 export const clear = asyncHandler(async (req: Request, res: Response) => {
   const ds = AppDataSource;
   const qr = ds.createQueryRunner();

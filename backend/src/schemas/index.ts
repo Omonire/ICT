@@ -57,6 +57,11 @@ export const scheduleGenerateSchema = z.object({
   strict: z.boolean().optional().default(false),
 });
 
+export const scheduleApproveSchema = z.object({
+  mode: z.enum(['auto', 'manual']),
+  candidateIds: z.array(z.string()).optional(),
+});
+
 export const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
   limit: z.coerce.number().int().min(1).optional().default(25),

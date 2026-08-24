@@ -25,7 +25,8 @@ export async function ensureHallSeats(hall: Hall): Promise<void> {
   if (rows.length > 0) await repo.save(rows);
 }
 
-export const listHalls = asyncHandler(async (_req: Request, res: Response) => {
+export const listHalls = asyncHandler(async (req: Request, res: Response) => {
+  console.log(`[listHalls] ${req.method} ${req.originalUrl}`);
   const halls = await AppDataSource.getRepository(Hall).find({ order: { name: 'ASC' } });
   const stats = new Map<string, { seats: number; occupied: number }>();
   try {

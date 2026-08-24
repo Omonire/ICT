@@ -11,6 +11,8 @@ import {
   Sparkles,
   Trash2,
   Users,
+  UserCheck,
+  ListChecks,
 } from 'lucide-react';
 import { apiGet, apiPost } from '@/lib/api';
 import { useAuth } from '@/components/auth/auth-context';
@@ -62,12 +64,14 @@ export default function SchedulePage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [preview, setPreview] = useState<SchedulePreview | null>(null);
   const [generating, setGenerating] = useState(false);
-  const [confirming, setConfirming] = useState(false);
   const [clearing, setClearing] = useState(false);
   const [clearOpen, setClearOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [overflow, setOverflow] = useState<Array<{ id: string; name: string }>>([]);
   const [capacity, setCapacity] = useState<ScheduleCapacity | null>(null);
+  const [manualMode, setManualMode] = useState(false);
+  const [selectedCandidates, setSelectedCandidates] = useState<Set<string>>(new Set());
+  const [approving, setApproving] = useState(false);
 
   const loadAll = useCallback(async () => {
     setLoading(true);
@@ -147,20 +151,6 @@ export default function SchedulePage() {
     }
   }
 
-  async function confirm() {
-    setConfirming(true);
-    try {
-      const res = await apiPost<{ data: { status: string; assignmentCount: number } }>('/api/schedule/confirm', undefined, { timeoutMs: 120_000 });
-      setStatus((prev) => (prev ? { ...prev, status: res.data.status as ScheduleState } : prev));
-      setPreview((prev) => (prev ? { ...prev, status: res.data.status as ScheduleState } : prev));
-      success('Schedule confirmed', `${res.data.assignmentCount} assignments are now locked in.`);
-    } catch (err) {
-      error('Could not confirm', err instanceof Error ? err.message : undefined);
-    } finally {
-      setConfirming(false);
-    }
-  }
-
   async function clearSchedule() {
     setClearing(true);
     try {
@@ -168,6 +158,8 @@ export default function SchedulePage() {
       setStatus((prev) => (prev ? { ...prev, status: 'none', summary: null, sessionIds: [] } : prev));
       setPreview(null);
       setOverflow([]);
+      setManualMode(false);
+      setSelectedCandidates(new Set());
       success('Schedule cleared', 'All assignments were removed. Candidates are unscheduled.');
     } catch (err) {
       error('Could not clear schedule', err instanceof Error ? err.message : undefined);
@@ -175,6 +167,92 @@ export default function SchedulePage() {
       setClearing(false);
       setClearOpen(false);
     }
+  }
+
+  async function approveAll() {
+    setApproving(true);
+    try {
+      const res = await apiPost<{ data: { status: string; assignmentCount: number } }>(
+        '/api/schedule/approve',
+        { mode: 'auto' },
+        { timeoutMs: 120_000 }
+      );
+      setStatus((prev) => (prev ? { ...prev, status: res.data.status as ScheduleState } : prev));
+      setPreview((prev) => (prev ? { ...prev, status: res.data.status as ScheduleState } : prev));
+      setManualMode(false);
+      setSelectedCandidates(new Set());
+      success('Schedule approved', `All ${res.data.assignmentCount} candidates have been approved.`);
+    } catch (err) {
+      error('Approval failed', err instanceof Error ? err.message : undefined);
+    } finally {
+      setApproving(false);
+    }
+  }
+
+  async function approveSelected() {
+    const ids = [...selectedCandidates];
+    if (ids.length === 0) {
+      error('No candidates selected', 'Select at least one candidate to approve.');
+      return;
+    }
+    setApproving(true);
+    try {
+      const res = await apiPost<{ data: { status: string; assignmentCount: number; removedCount: number } }>(
+        '/api/schedule/approve',
+        { mode: 'manual', candidateIds: ids },
+        { timeoutMs: 120_000 }
+      );
+      setStatus((prev) => (prev ? { ...prev, status: res.data.status as ScheduleState } : prev));
+      setPreview((prev) => (prev ? { ...prev, status: res.data.status as ScheduleState } : prev));
+      setManualMode(false);
+      setSelectedCandidates(new Set());
+      success(
+        'Schedule approved',
+        `${res.data.assignmentCount} candidates approved. ${res.data.removedCount} removed.`
+      );
+    } catch (err) {
+      error('Approval failed', err instanceof Error ? err.message : undefined);
+    } finally {
+      setApproving(false);
+    }
+  }
+
+  function enterManualMode() {
+    const allIds = new Set<string>();
+    if (preview?.groups) {
+      for (const g of preview.groups) {
+        for (const c of g.candidates) {
+          allIds.add(c.candidateId);
+        }
+      }
+    }
+    setSelectedCandidates(allIds);
+    setManualMode(true);
+  }
+
+  function toggleCandidate(id: string) {
+    setSelectedCandidates((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAllCandidates() {
+    const allIds = new Set<string>();
+    if (preview?.groups) {
+      for (const g of preview.groups) {
+        for (const c of g.candidates) {
+          allIds.add(c.candidateId);
+        }
+      }
+    }
+    setSelectedCandidates(allIds);
+  }
+
+  function deselectAllCandidates() {
+    setSelectedCandidates(new Set());
   }
 
   if (loading) return <PageLoader label="Loading schedule…" />;
@@ -244,12 +322,6 @@ export default function SchedulePage() {
               <Button onClick={() => void generate()} disabled={generating || selected.size === 0}>
                 {generating ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
                 {generating ? 'Generating…' : status?.status === 'draft' ? 'Regenerate' : 'Generate schedule'}
-              </Button>
-            )}
-            {status?.status === 'draft' && (
-              <Button variant="secondary" onClick={() => void confirm()} disabled={confirming || (status.assignmentCount ?? 0) === 0}>
-                <CheckCircle2 className="h-4 w-4" />
-                {confirming ? 'Confirming…' : 'Confirm schedule'}
               </Button>
             )}
           </div>
@@ -448,6 +520,29 @@ export default function SchedulePage() {
                           <table className="w-full text-[13px]">
                           <thead className="bg-slate-50">
                             <tr>
+                              {preview.status === 'draft' && manualMode && (
+                                <th className="px-3 py-2 text-center">
+                                  <input
+                                    type="checkbox"
+                                    className="h-4 w-4 rounded border-slate-300 accent-purple-600"
+                                    checked={g.candidates.every((c) => selectedCandidates.has(c.candidateId))}
+                                    ref={(el) => {
+                                      if (el) el.indeterminate = g.candidates.some((c) => selectedCandidates.has(c.candidateId)) && !g.candidates.every((c) => selectedCandidates.has(c.candidateId));
+                                    }}
+                                    onChange={() => {
+                                      const allSelected = g.candidates.every((c) => selectedCandidates.has(c.candidateId));
+                                      setSelectedCandidates((prev) => {
+                                        const next = new Set(prev);
+                                        for (const c of g.candidates) {
+                                          if (allSelected) next.delete(c.candidateId);
+                                          else next.add(c.candidateId);
+                                        }
+                                        return next;
+                                      });
+                                    }}
+                                  />
+                                </th>
+                              )}
                               <th className="px-3 py-2 text-left font-mono text-[11px] font-semibold uppercase text-slate-500">Seat</th>
                               <th className="px-3 py-2 text-left font-mono text-[11px] font-semibold uppercase text-slate-500">ID</th>
                               <th className="px-3 py-2 text-left text-[11px] font-semibold uppercase text-slate-500">Candidate</th>
@@ -455,7 +550,17 @@ export default function SchedulePage() {
                           </thead>
                           <tbody>
                             {g.candidates.slice(0, 12).map((c) => (
-                              <tr key={`${c.candidateId}:${c.seatNumber}`} className="border-t-[0.5px] border-slate-100">
+                              <tr key={`${c.candidateId}:${c.seatNumber}`} className={cn('border-t-[0.5px] border-slate-100', manualMode && !selectedCandidates.has(c.candidateId) && 'bg-red-50/50 opacity-60')}>
+                                {preview.status === 'draft' && manualMode && (
+                                  <td className="px-3 py-1.5 text-center">
+                                    <input
+                                      type="checkbox"
+                                      className="h-4 w-4 rounded border-slate-300 accent-purple-600"
+                                      checked={selectedCandidates.has(c.candidateId)}
+                                      onChange={() => toggleCandidate(c.candidateId)}
+                                    />
+                                  </td>
+                                )}
                                 <td className="px-3 py-1.5 font-mono text-[12px] text-purple-700">{c.seatNumber}</td>
                                 <td className="px-3 py-1.5 font-mono text-[12px] text-slate-600">{c.candidateId}</td>
                                 <td className="px-3 py-1.5 text-slate-800">{c.name}</td>
@@ -493,15 +598,45 @@ export default function SchedulePage() {
             </div>
           )}
 
-          {preview.status === 'draft' && (
+          {preview.status === 'draft' && !manualMode && (
             <div className="flex flex-col gap-2 sm:flex-row sm:justify-end">
               <Button variant="outline" onClick={() => void generate()}>
                 <RefreshCw className="h-4 w-4" /> Regenerate
               </Button>
-              <Button variant="secondary" onClick={() => void confirm()} disabled={confirming}>
-                <CheckCircle2 className="h-4 w-4" />
-                {confirming ? 'Confirming…' : 'Confirm schedule'}
+              <Button onClick={() => void approveAll()} disabled={approving}>
+                <UserCheck className="h-4 w-4" />
+                {approving ? 'Approving…' : 'Approve All'}
               </Button>
+              <Button variant="secondary" onClick={enterManualMode} disabled={approving}>
+                <ListChecks className="h-4 w-4" /> Select & Approve
+              </Button>
+            </div>
+          )}
+
+          {preview.status === 'draft' && manualMode && (
+            <div className="rounded-lg border-[0.5px] border-purple-200 bg-purple-50 p-4">
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[14px] font-semibold text-purple-900">Manual Selection Mode</p>
+                  <p className="text-[12px] text-purple-700">
+                    {selectedCandidates.size} of {preview.groups.reduce((sum, g) => sum + g.candidates.length, 0)} candidates selected
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Button variant="ghost" size="sm" onClick={selectAllCandidates}>Select all</Button>
+                  <Button variant="ghost" size="sm" onClick={deselectAllCandidates}>Deselect all</Button>
+                  <Button variant="ghost" size="sm" onClick={() => setManualMode(false)}>
+                    Cancel
+                  </Button>
+                  <Button size="sm" onClick={() => void approveSelected()} disabled={approving || selectedCandidates.size === 0}>
+                    <CheckCircle2 className="h-4 w-4" />
+                    {approving ? 'Saving…' : `Save ${selectedCandidates.size} selected`}
+                  </Button>
+                </div>
+              </div>
+              <p className="text-[12px] text-purple-600">
+                Uncheck candidates you want to remove. Only checked candidates will be confirmed.
+              </p>
             </div>
           )}
         </div>
