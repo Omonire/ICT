@@ -27,19 +27,24 @@ export async function ensureHallSeats(hall: Hall): Promise<void> {
 
 export const listHalls = asyncHandler(async (_req: Request, res: Response) => {
   const halls = await AppDataSource.getRepository(Hall).find({ order: { name: 'ASC' } });
-  const seatRepo = AppDataSource.getRepository(Seat);
-  const hallIds = halls.map((h) => h.id);
-  const seatCounts = hallIds.length
-    ? await seatRepo
+  let stats = new Map<string, { seats: number; occupied: number }>();
+  try {
+    const seatRepo = AppDataSource.getRepository(Seat);
+    const hallIds = halls.map((h) => h.id);
+    if (hallIds.length) {
+      const seatCounts = await seatRepo
         .createQueryBuilder('s')
-        .select('s.hallId', 'hallId')
+        .select('"s"."hall_id"', 'hallId')
         .addSelect('COUNT(*)', 'count')
-        .addSelect("SUM(CASE WHEN s.status = 'occupied' THEN 1 ELSE 0 END)", 'occupied')
-        .where('s.hallId IN (:...ids)', { ids: hallIds })
-        .groupBy('s.hallId')
-        .getRawMany()
-    : [];
-  const stats = new Map(seatCounts.map((r) => [r.hallId, { seats: Number(r.count), occupied: Number(r.occupied ?? 0) }]));
+        .addSelect("SUM(CASE WHEN \"s\".\"status\" = 'occupied' THEN 1 ELSE 0 END)", 'occupied')
+        .where('"s"."hall_id" IN (:...ids)', { ids: hallIds })
+        .groupBy('"s"."hall_id"')
+        .getRawMany();
+      stats = new Map(seatCounts.map((r: any) => [r.hallId, { seats: Number(r.count), occupied: Number(r.occupied ?? 0) }]));
+    }
+  } catch {
+    // seats table may not exist yet — return halls without seat stats
+  }
   res.json({
     data: halls.map((h) => ({
       ...h,
