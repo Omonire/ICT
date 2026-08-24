@@ -240,18 +240,19 @@ function summarize(input: {
     perHall.set(a.hallId, bucket);
   }
 
+  // Single-pass O(C) — build group stats in one loop instead of O(G*C)
+  const groupTotals = new Map<string, { total: number; assigned: number }>();
+  for (const g of groups) groupTotals.set(g.id, { total: 0, assigned: 0 });
+  for (const c of candidates) {
+    const gt = groupTotals.get(c.careerGroupId);
+    if (gt) {
+      gt.total += 1;
+      if (assignedIds.has(c.id)) gt.assigned += 1;
+    }
+  }
   const byGroup: GroupStat[] = groups.map((g) => {
-    const total = candidates.filter((c) => c.careerGroupId === g.id).length;
-    const assigned = candidates.filter(
-      (c) => c.careerGroupId === g.id && assignedIds.has(c.id),
-    ).length;
-    return {
-      careerGroupId: g.id,
-      name: g.name,
-      total,
-      assigned,
-      unassigned: total - assigned,
-    };
+    const gt = groupTotals.get(g.id)!;
+    return { careerGroupId: g.id, name: g.name, total: gt.total, assigned: gt.assigned, unassigned: gt.total - gt.assigned };
   });
 
   const bySession: SessionStat[] = [...perSession.values()].map(({ session, assigned }) => {
@@ -351,21 +352,33 @@ export async function generateSchedule(opts: GenerateOptions): Promise<PlanResul
   const groups = await groupRepo.find();
   const sessionIds = sessions.map((s) => s.id);
 
-  // Candidates already assigned outside the selected sessions — skip them.
+  // Candidates already assigned outside the selected sessions — skip them (chunked to avoid param limit).
   let outsideSet = new Set<string>();
   if (candidates.length > 0) {
-    const outsideAssignments = await assignmentRepo
-      .createQueryBuilder('a')
-      .where('a.candidateId IN (:...ids)', { ids: candidates.map((c) => c.id) })
-      .andWhere('a.sessionId NOT IN (:...sessionIds)', { sessionIds })
-      .getMany();
-    outsideSet = new Set(outsideAssignments.map((a) => a.candidateId));
+    const CHUNK = 5000;
+    const allIds = candidates.map((c) => c.id);
+    for (let i = 0; i < allIds.length; i += CHUNK) {
+      const chunk = allIds.slice(i, i + CHUNK);
+      const outsideAssignments = await assignmentRepo
+        .createQueryBuilder('a')
+        .where('a.candidateId IN (:...ids)', { ids: chunk })
+        .andWhere('a.sessionId NOT IN (:...sessionIds)', { sessionIds })
+        .getMany();
+      for (const a of outsideAssignments) outsideSet.add(a.candidateId);
+    }
   }
   const available = candidates.filter((c) => !outsideSet.has(c.id));
 
-  const existing = await assignmentRepo.find({
-    where: sessionIds.map((id) => ({ sessionId: id })),
-  });
+  // Load existing assignments (chunked to avoid param limit)
+  const CHUNK = 5000;
+  let existing: CandidateAssignment[] = [];
+  for (let i = 0; i < sessionIds.length; i += CHUNK) {
+    const chunk = sessionIds.slice(i, i + CHUNK);
+    const batch = await assignmentRepo.find({
+      where: chunk.map((id) => ({ sessionId: id })),
+    });
+    existing = existing.concat(batch);
+  }
 
   // --- Plan (pure in-memory) --------------------------------------------------------
   const result = buildPlan({ sessions, halls, candidates: available, groups, existing });

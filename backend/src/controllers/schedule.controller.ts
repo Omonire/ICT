@@ -209,48 +209,103 @@ export const approve = asyncHandler(async (req: Request, res: Response) => {
     throw AppError.badRequest('Generate a schedule before approving it');
   }
 
-  const assignmentRepo = AppDataSource.getRepository(CandidateAssignment);
-  const candidateRepo = AppDataSource.getRepository(Candidate);
-
-  if (mode === 'manual') {
-    if (!candidateIds || candidateIds.length === 0) {
-      throw AppError.badRequest('Select at least one candidate to approve');
-    }
-
-    const allAssignments = await assignmentRepo.find();
-    const toRemove = allAssignments.filter((a) => !candidateIds.includes(a.candidateId));
-    const toKeep = allAssignments.filter((a) => candidateIds.includes(a.candidateId));
-
-    const ds = AppDataSource;
-    const qr = ds.createQueryRunner();
-    await qr.connect();
-    await qr.startTransaction();
-    try {
-      for (const a of toRemove) {
-        await qr.query(
-          `UPDATE candidates SET status = $1, assigned_hall_id = NULL, assigned_seat_number = NULL, assigned_session_id = NULL, assigned_exam_date = NULL WHERE id = $2`,
-          [CandidateStatus.UNSCHEDULED, a.candidateId]
-        );
-        await qr.query(
-          `UPDATE seats SET status = $1, candidate_id = NULL WHERE hall_id = $2 AND seat_number = $3`,
-          ['available', a.hallId, a.seatNumber]
-        );
-        await qr.query(`DELETE FROM candidate_assignments WHERE id = $1`, [a.id]);
+  const ds = AppDataSource;
+  const qr = ds.createQueryRunner();
+  await qr.connect();
+  await qr.startTransaction();
+  try {
+    if (mode === 'manual') {
+      if (!candidateIds || candidateIds.length === 0) {
+        throw AppError.badRequest('Select at least one candidate to approve');
       }
 
-      for (const a of toKeep) {
-        const candidate = await qr.manager.findOne(Candidate, { where: { id: a.candidateId } });
-        if (candidate) {
-          candidate.status = CandidateStatus.SCHEDULED;
-          candidate.assignedHallId = a.hallId;
-          candidate.assignedSeatNumber = a.seatNumber;
-          candidate.assignedSessionId = a.sessionId;
-          await qr.manager.save(candidate);
-        }
-        await qr.query(
-          `UPDATE seats SET status = $1, candidate_id = $2 WHERE hall_id = $3 AND seat_number = $4`,
-          ['occupied', a.candidateId, a.hallId, a.seatNumber]
+      // Load only assignments for candidate IDs we care about
+      const BATCH = 5000;
+      const toRemove: { candidateId: string; hallId: string; seatNumber: string; id: string }[] = [];
+      const toKeep: { candidateId: string; hallId: string; seatNumber: string; sessionId: string }[] = [];
+
+      for (let i = 0; i < candidateIds.length; i += BATCH) {
+        const chunk = candidateIds.slice(i, i + BATCH);
+        const keepRows = await qr.query(
+          `SELECT a.id, a.candidate_id, a.hall_id, a.seat_number, a.session_id
+           FROM candidate_assignments a WHERE a.candidate_id = ANY($1::varchar[])`,
+          [chunk]
         );
+        toKeep.push(...keepRows);
+      }
+
+      // Get all assignment candidate IDs, find ones NOT in candidateIds
+      const allRows = await qr.query(`SELECT id, candidate_id, hall_id, seat_number FROM candidate_assignments`);
+      const keepSet = new Set(candidateIds);
+      for (const row of allRows) {
+        if (!keepSet.has(row.candidate_id)) {
+          toRemove.push({ candidateId: row.candidate_id, hallId: row.hall_id, seatNumber: row.seat_number, id: row.id });
+        }
+      }
+
+      // Bulk unschedule removed candidates via temp table
+      if (toRemove.length > 0) {
+        await qr.query(`CREATE TEMPORARY TABLE _rm (id VARCHAR, hall_id VARCHAR, seat_number VARCHAR) ON COMMIT DROP`);
+        for (let i = 0; i < toRemove.length; i += BATCH) {
+          const chunk = toRemove.slice(i, i + BATCH);
+          const rows: string[] = [];
+          const params: unknown[] = [];
+          let pi = 1;
+          for (const r of chunk) {
+            rows.push(`($${pi}, $${pi + 1}, $${pi + 2})`);
+            params.push(r.candidateId, r.hallId, r.seatNumber);
+            pi += 3;
+          }
+          await qr.query(`INSERT INTO _rm (id, hall_id, seat_number) VALUES ${rows.join(',')}`, params);
+        }
+
+        // Bulk update candidates to unscheduled
+        await qr.query(`UPDATE candidates SET status = $1, assigned_hall_id = NULL, assigned_seat_number = NULL, assigned_session_id = NULL, assigned_exam_date = NULL FROM _rm WHERE candidates.id = _rm.id`, [CandidateStatus.UNSCHEDULED]);
+
+        // Bulk free seats
+        await qr.query(`UPDATE seats SET status = 'available', candidate_id = NULL FROM _rm WHERE seats.hall_id = _rm.hall_id AND seats.seat_number = _rm.seat_number`);
+
+        // Bulk delete assignments
+        const rmIds = toRemove.map((r) => r.id);
+        for (let i = 0; i < rmIds.length; i += BATCH) {
+          await qr.query(`DELETE FROM candidate_assignments WHERE id = ANY($1::varchar[])`, [rmIds.slice(i, i + BATCH)]);
+        }
+      }
+
+      // Bulk schedule kept candidates via temp table
+      if (toKeep.length > 0) {
+        const sessionById = new Map<string, { examDate: string }>();
+        const sessIds = [...new Set(toKeep.map((a) => a.sessionId))];
+        if (sessIds.length > 0) {
+          for (let i = 0; i < sessIds.length; i += BATCH) {
+            const rows = await qr.query(`SELECT id, exam_date FROM session WHERE id = ANY($1::varchar[])`, [sessIds.slice(i, i + BATCH)]);
+            for (const r of rows) sessionById.set(r.id, { examDate: r.exam_date });
+          }
+        }
+
+        await qr.query(`CREATE TEMPORARY TABLE _kp (
+          candidate_id VARCHAR, hall_id VARCHAR, seat_number VARCHAR, session_id VARCHAR, exam_date VARCHAR
+        ) ON COMMIT DROP`);
+
+        for (let i = 0; i < toKeep.length; i += BATCH) {
+          const chunk = toKeep.slice(i, i + BATCH);
+          const rows: string[] = [];
+          const params: unknown[] = [];
+          let pi = 1;
+          for (const a of chunk) {
+            const ed = sessionById.get(a.sessionId)?.examDate ?? null;
+            rows.push(`($${pi}, $${pi + 1}, $${pi + 2}, $${pi + 3}, $${pi + 4})`);
+            params.push(a.candidateId, a.hallId, a.seatNumber, a.sessionId, ed);
+            pi += 5;
+          }
+          await qr.query(`INSERT INTO _kp (candidate_id, hall_id, seat_number, session_id, exam_date) VALUES ${rows.join(',')}`, params);
+        }
+
+        // Bulk update candidates to scheduled
+        await qr.query(`UPDATE candidates SET status = $1, assigned_hall_id = _kp.hall_id, assigned_seat_number = _kp.seat_number, assigned_session_id = _kp.session_id, assigned_exam_date = _kp.exam_date FROM _kp WHERE candidates.id = _kp.candidate_id`, [CandidateStatus.SCHEDULED]);
+
+        // Bulk occupy seats
+        await qr.query(`UPDATE seats SET status = 'occupied', candidate_id = _kp.candidate_id FROM _kp WHERE seats.hall_id = _kp.hall_id AND seats.seat_number = _kp.seat_number`);
       }
 
       meta.status = ScheduleState.CONFIRMED;
@@ -258,54 +313,71 @@ export const approve = asyncHandler(async (req: Request, res: Response) => {
       meta.confirmedBy = req.user?.id ?? null;
       await qr.manager.save(meta);
       await qr.commitTransaction();
-    } catch (err) {
-      await qr.rollbackTransaction();
-      throw err;
-    } finally {
-      await qr.release();
-    }
 
-    await logActivity({
-      action: 'schedule.approved',
-      userId: req.user?.id ?? null,
-      entityType: 'schedule',
-      details: { mode, approved: toKeep.length, removed: toRemove.length },
-    });
+      await logActivity({
+        action: 'schedule.approved',
+        userId: req.user?.id ?? null,
+        entityType: 'schedule',
+        details: { mode, approved: toKeep.length, removed: toRemove.length },
+      });
 
-    res.json({ data: { status: ScheduleState.CONFIRMED, assignmentCount: toKeep.length, removedCount: toRemove.length } });
-  } else {
-    const count = await assignmentRepo.count();
-    if (count === 0) throw AppError.badRequest('The draft schedule has no assignments to approve');
+      res.json({ data: { status: ScheduleState.CONFIRMED, assignmentCount: toKeep.length, removedCount: toRemove.length } });
+    } else {
+      // Auto mode — bulk approve all assignments
+      const count = (await qr.query(`SELECT COUNT(*)::int AS cnt FROM candidate_assignments`))[0]?.cnt ?? 0;
+      if (count === 0) throw AppError.badRequest('The draft schedule has no assignments to approve');
 
-    const allAssignments = await assignmentRepo.find();
-    for (const a of allAssignments) {
-      const candidate = await candidateRepo.findOne({ where: { id: a.candidateId } });
-      if (candidate) {
-        candidate.status = CandidateStatus.SCHEDULED;
-        candidate.assignedHallId = a.hallId;
-        candidate.assignedSeatNumber = a.seatNumber;
-        candidate.assignedSessionId = a.sessionId;
-        await candidateRepo.save(candidate);
+      // Bulk update all candidates to scheduled using temp table
+      await qr.query(`CREATE TEMPORARY TABLE _auto (
+        candidate_id VARCHAR, hall_id VARCHAR, seat_number VARCHAR, session_id VARCHAR, exam_date VARCHAR
+      ) ON COMMIT DROP`);
+
+      const BATCH = 10000;
+      for (let offset = 0; offset < count; offset += BATCH) {
+        const rows = await qr.query(
+          `SELECT a.candidate_id, a.hall_id, a.seat_number, a.session_id, s.exam_date
+           FROM candidate_assignments a JOIN session s ON s.id = a.session_id
+           ORDER BY a.candidate_id LIMIT $1 OFFSET $2`,
+          [BATCH, offset]
+        );
+        if (rows.length === 0) break;
+        const vals: string[] = [];
+        const params: unknown[] = [];
+        let pi = 1;
+        for (const r of rows) {
+          vals.push(`($${pi}, $${pi + 1}, $${pi + 2}, $${pi + 3}, $${pi + 4})`);
+          params.push(r.candidate_id, r.hall_id, r.seat_number, r.session_id, r.exam_date);
+          pi += 5;
+        }
+        await qr.query(`INSERT INTO _auto (candidate_id, hall_id, seat_number, session_id, exam_date) VALUES ${vals.join(',')}`, params);
       }
-      await AppDataSource.query(
-        `UPDATE seats SET status = $1, candidate_id = $2 WHERE hall_id = $3 AND seat_number = $4`,
-        ['occupied', a.candidateId, a.hallId, a.seatNumber]
-      );
+
+      // Bulk update candidates
+      await qr.query(`UPDATE candidates SET status = $1, assigned_hall_id = _auto.hall_id, assigned_seat_number = _auto.seat_number, assigned_session_id = _auto.session_id, assigned_exam_date = _auto.exam_date FROM _auto WHERE candidates.id = _auto.candidate_id`, [CandidateStatus.SCHEDULED]);
+
+      // Bulk occupy seats
+      await qr.query(`UPDATE seats SET status = 'occupied', candidate_id = _auto.candidate_id FROM _auto WHERE seats.hall_id = _auto.hall_id AND seats.seat_number = _auto.seat_number`);
+
+      meta.status = ScheduleState.CONFIRMED;
+      meta.confirmedAt = new Date();
+      meta.confirmedBy = req.user?.id ?? null;
+      await qr.manager.save(meta);
+      await qr.commitTransaction();
+
+      await logActivity({
+        action: 'schedule.approved',
+        userId: req.user?.id ?? null,
+        entityType: 'schedule',
+        details: { mode: 'auto', approved: count },
+      });
+
+      res.json({ data: { status: ScheduleState.CONFIRMED, assignmentCount: count, removedCount: 0 } });
     }
-
-    meta.status = ScheduleState.CONFIRMED;
-    meta.confirmedAt = new Date();
-    meta.confirmedBy = req.user?.id ?? null;
-    await AppDataSource.getRepository(ScheduleMeta).save(meta);
-
-    await logActivity({
-      action: 'schedule.approved',
-      userId: req.user?.id ?? null,
-      entityType: 'schedule',
-      details: { mode: 'auto', approved: count },
-    });
-
-    res.json({ data: { status: ScheduleState.CONFIRMED, assignmentCount: count, removedCount: 0 } });
+  } catch (err) {
+    await qr.rollbackTransaction();
+    throw err;
+  } finally {
+    await qr.release();
   }
 });
 
