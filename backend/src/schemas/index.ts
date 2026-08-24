@@ -23,7 +23,7 @@ export const candidateUpdateSchema = candidateCreateSchema.partial();
 
 export const hallCreateSchema = z.object({
   name: z.string().min(2).max(40),
-  capacity: z.number().int().min(10).max(2000),
+  capacity: z.number().int().min(10).max(1000000),
   status: z.enum(['active', 'disabled']).default('active'),
 });
 
