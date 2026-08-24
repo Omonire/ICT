@@ -139,37 +139,50 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
     await userRepo.save(operator);
   }
 
+  const BATCH = 500;
+
   const groupRepo = ds.getRepository(CareerGroup);
-  const groups = await groupRepo.save(
-    CAREER_GROUPS.map((g) =>
-      groupRepo.create({ id: genUuid(), ...g })
-    )
-  );
+  let groups = await groupRepo.find();
+  if (groups.length === 0) {
+    groups = await groupRepo.save(
+      CAREER_GROUPS.map((g) =>
+        groupRepo.create({ id: genUuid(), ...g })
+      )
+    );
+  }
 
   const hallRepo = ds.getRepository(Hall);
   const seatRepo = ds.getRepository(Seat);
-  const halls = await hallRepo.save(
-    HALLS.map((h) => hallRepo.create({ id: genUuid(), ...h }))
-  );
-  const seatRows: Seat[] = [];
-  for (const hall of halls) {
-    for (let n = 1; n <= hall.capacity; n++) {
-      seatRows.push(
-        seatRepo.create({
-          id: genUuid(),
-          hallId: hall.id,
-          seatNumber: seatLabel(hall.name, n),
-          status: 'available',
-        })
-      );
+  let halls = await hallRepo.find();
+  if (halls.length === 0) {
+    halls = await hallRepo.save(
+      HALLS.map((h) => hallRepo.create({ id: genUuid(), ...h }))
+    );
+    const seatRows: Seat[] = [];
+    for (const hall of halls) {
+      for (let n = 1; n <= hall.capacity; n++) {
+        seatRows.push(
+          seatRepo.create({
+            id: genUuid(),
+            hallId: hall.id,
+            seatNumber: seatLabel(hall.name, n),
+            status: 'available',
+          })
+        );
+      }
+    }
+    for (let i = 0; i < seatRows.length; i += BATCH) {
+      await seatRepo.save(seatRows.slice(i, i + BATCH));
     }
   }
-  await seatRepo.save(seatRows);
 
   const sessionRepo = ds.getRepository(Session);
-  const sessions = await sessionRepo.save(
-    buildSessions().map((s) => sessionRepo.create({ id: genUuid(), ...s }))
-  );
+  let sessions = await sessionRepo.find();
+  if (sessions.length === 0) {
+    sessions = await sessionRepo.save(
+      buildSessions().map((s) => sessionRepo.create({ id: genUuid(), ...s }))
+    );
+  }
 
   const candidateRepo = ds.getRepository(Candidate);
   
@@ -245,7 +258,10 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
     }
   }
   
-  await candidateRepo.save(candidates);
+  for (let i = 0; i < candidates.length; i += BATCH) {
+    await candidateRepo.save(candidates.slice(i, i + BATCH));
+    console.log(`  → saved ${Math.min(i + BATCH, candidates.length)}/${candidates.length} candidates`);
+  }
   await groupRepo.save(
     groups.map((g) => {
       g.candidateCount = candidates.filter((c) => c.careerGroupId === g.id).length;
@@ -291,8 +307,12 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
     if (!placed) candidate.status = 'unscheduled';
   });
 
-  await assignmentRepo.save(assignments);
-  await candidateRepo.save(toAssign);
+  for (let i = 0; i < assignments.length; i += BATCH) {
+    await assignmentRepo.save(assignments.slice(i, i + BATCH));
+  }
+  for (let i = 0; i < toAssign.length; i += BATCH) {
+    await candidateRepo.save(toAssign.slice(i, i + BATCH));
+  }
 
   const latestByHall = new Map<string, string[]>();
   for (const a of assignments) {
