@@ -14,10 +14,11 @@ export function notFoundHandler(_req: Request, res: Response): void {
 
 export function errorHandler(
   err: unknown,
-  _req: Request,
+  req: Request,
   res: Response,
   _next: NextFunction
 ): void {
+  console.error(`[error] ${req.method} ${req.path} →`, err instanceof Error ? err.message : err);
   if (err instanceof AppError) {
     res.status(err.statusCode).json({
       error: { code: err.code, message: err.message, details: err.details },
