@@ -59,7 +59,7 @@ export const scheduleGenerateSchema = z.object({
 
 export const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).optional().default(1),
-  limit: z.coerce.number().int().min(1).max(200).optional().default(25),
+  limit: z.coerce.number().int().min(1).optional().default(25),
   search: z.string().max(200).optional(),
   status: z.string().max(30).optional(),
   careerGroupId: z.string().uuid().optional(),
