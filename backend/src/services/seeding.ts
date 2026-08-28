@@ -7,8 +7,7 @@ import { Hall } from '../entities/Hall';
 import { Seat } from '../entities/Seat';
 import { Session } from '../entities/Session';
 import { Candidate } from '../entities/Candidate';
-import { CandidateAssignment } from '../entities/CandidateAssignment';
-import { ScheduleMeta, ScheduleState } from '../entities/ScheduleMeta';
+import { SchedulingConfig, DEFAULT_SCHEDULING_RULES } from '../entities/SchedulingConfig';
 import { genUuid, nextCandidateId } from '../utils/ids';
 import { seatLabel } from './scheduler';
 import { logActivity } from './activity-log';
@@ -18,12 +17,13 @@ const CAREER_GROUPS: Array<{
   name: string;
   description: string;
   subjects: string[];
+  firstChoice?: string;
 }> = [
-  { name: 'Management Sciences', description: 'Business, Accounting & Finance programmes', subjects: ['Financial Accounting', 'Business Law', 'Management Principles', 'Quantitative Methods'] },
-  { name: 'Engineering', description: 'Civil, Mechanical & Electrical engineering programmes', subjects: ['Engineering Mathematics', 'Thermodynamics', 'Circuit Theory', 'Fluid Mechanics'] },
-  { name: 'Arts & Humanities', description: 'Languages, History & Liberal arts programmes', subjects: ['Literary Appreciation', 'African History', 'Philosophy of Science', 'French'] },
-  { name: 'Natural Sciences', description: 'Physics, Chemistry, Biology & Computer Science', subjects: ['General Physics', 'Organic Chemistry', 'Cell Biology', 'Programming Concepts'] },
-  { name: 'Social Sciences', description: 'Economics, Political Science & Sociology programmes', subjects: ['Microeconomics', 'Comparative Politics', 'Research Methods', 'Statistics'] },
+  { name: 'Management Sciences', description: 'Business, Accounting & Finance programmes', subjects: ['Financial Accounting', 'Business Law', 'Management Principles', 'Quantitative Methods'], firstChoice: 'Business Administration' },
+  { name: 'Engineering', description: 'Civil, Mechanical & Electrical engineering programmes', subjects: ['Engineering Mathematics', 'Thermodynamics', 'Circuit Theory', 'Fluid Mechanics'], firstChoice: 'Computer Engineering' },
+  { name: 'Arts & Humanities', description: 'Languages, History & Liberal arts programmes', subjects: ['Literary Appreciation', 'African History', 'Philosophy of Science', 'French'], firstChoice: 'B.A. Mass Communication' },
+  { name: 'Natural Sciences', description: 'Physics, Chemistry, Biology & Computer Science', subjects: ['General Physics', 'Organic Chemistry', 'Cell Biology', 'Programming Concepts'], firstChoice: 'Physics' },
+  { name: 'Social Sciences', description: 'Economics, Political Science & Sociology programmes', subjects: ['Microeconomics', 'Comparative Politics', 'Research Methods', 'Statistics'], firstChoice: 'Economics' },
 ];
 
 const HALLS = [
@@ -33,28 +33,6 @@ const HALLS = [
   { name: 'Hall D', capacity: 100 },
   { name: 'Hall E', capacity: 80 },
 ];
-
-const FIRST_NAMES = [
-  'Adaeze', 'Babatunde', 'Chioma', 'Damilola', 'Efe', 'Funmilayo', 'Gbenga',
-  'Hauwa', 'Ibrahim', 'Jummai', 'Kelechi', 'Lola', 'Musa', 'Ngozi', 'Obinna',
-  'Precious', 'Quadri', 'Ruth', 'Sade', 'Tunde', 'Uche', 'Victoria', 'Wale',
-  'Yemi', 'Zainab', 'Ayobami', 'Blessing', 'Chinedu', 'Deborah', 'Emeka',
-  'Fatima', 'Gloria', 'Hassan', 'Ifeoma', 'Joy', 'Kunle', 'Linda', 'Maryam',
-  'Nneka', 'Olamide', 'Peter', 'Queen', 'Richard', 'Sandra', 'Tobi', 'Usman',
-  'Veronica', 'Wumi', 'Yusuf', 'Amara',
-];
-
-const LAST_NAMES = [
-  'Adeyemi', 'Bello', 'Chukwu', 'Dada', 'Eze', 'Fagbemi', 'Garba',
-  'Hassan', 'Ibekwe', 'Johnson', 'Kalu', 'Lawal', 'Mensah', 'Nwachukwu',
-  'Okafor', 'Ogunleye', 'Popoola', 'Quadri', 'Rabiu', 'Salami', 'Temitope',
-  'Umar', 'Vivian', 'Williams', 'Yakubu', 'Zubair', 'Adebayo', 'Bamidele',
-  'Chukwuma', 'Dare', 'Ekwere', 'Femi', 'Ganiyu', 'Idowu', 'Jibril',
-  'Kayode', 'Lamidi', 'Mohammed', 'Nwosu', 'Olawale', 'Osman', 'Pepple',
-  'Raji', 'Sunday', 'Taiwo', 'Ugwu', 'Waziri', 'Yusuf', 'Abubakar', 'Zakari',
-];
-
-const EMAIL_DOMAIN = 'student.fut.edu.ng';
 
 function nextMonday(): Date {
   const d = new Date();
@@ -146,7 +124,7 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
   if (groups.length === 0) {
     groups = await groupRepo.save(
       CAREER_GROUPS.map((g) =>
-        groupRepo.create({ id: genUuid(), ...g })
+        groupRepo.create({ id: genUuid(), name: g.name, description: g.description, subjects: g.subjects })
       )
     );
   }
@@ -181,6 +159,21 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
   if (sessions.length === 0) {
     sessions = await sessionRepo.save(
       buildSessions().map((s) => sessionRepo.create({ id: genUuid(), ...s }))
+    );
+  }
+
+  // Seed default scheduling config if none exists
+  const configRepo = ds.getRepository(SchedulingConfig);
+  const existingConfig = await configRepo.findOne({ where: { name: 'Default Configuration' } });
+  if (!existingConfig) {
+    await configRepo.save(
+      configRepo.create({
+        id: genUuid(),
+        name: 'Default Configuration',
+        description: 'Default scheduling rules for ExamFlow',
+        rules: DEFAULT_SCHEDULING_RULES,
+        isActive: true,
+      })
     );
   }
 
@@ -234,28 +227,9 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
     const total = candidates.length;
     console.log(`✓ Loaded ${total} candidates from Excel file (PRIORITY DATA SOURCE)`);
   } catch (err) {
-    console.warn('⚠️ Excel file not found, falling back to demo data:', err instanceof Error ? err.message : err);
-    // Fallback to demo data if Excel file is not found
-    const total = 520;
-    const groupSize = Math.ceil(total / groups.length);
-    let id = nextCandidateId([]);
-    for (let i = 0; i < total; i++) {
-      const group = groups[Math.floor(i / groupSize) % groups.length];
-      const first = FIRST_NAMES[i % FIRST_NAMES.length];
-      const last = LAST_NAMES[Math.floor(i / FIRST_NAMES.length) % LAST_NAMES.length];
-      const suffix = String(i + 1).padStart(3, '0');
-      candidates.push(
-        candidateRepo.create({
-          id,
-          name: `${first} ${last}`,
-          email: `${first.toLowerCase()}.${last.toLowerCase()}.${suffix}@${EMAIL_DOMAIN}`,
-          matricNo: `FUT/${String(2024 + (i % 2))}/${String(100 + (i % 850)).padStart(3, '0')}`,
-          careerGroupId: group.id,
-          status: 'unscheduled',
-        })
-      );
-      id = nextCandidateId([id]);
-    }
+    throw new Error(
+      `Seed requires the real Excel candidate source. No candidate data was generated: ${err instanceof Error ? err.message : String(err)}`
+    );
   }
   
   for (let i = 0; i < candidates.length; i += BATCH) {
@@ -269,85 +243,6 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
     })
   );
 
-  // Pre-assign roughly half of candidates across sessions (round-robin) so the
-  // system shows populated halls, seat maps and attendance sheets immediately.
-  const assignmentRepo = ds.getRepository(CandidateAssignment);
-  const half = Math.floor(candidates.length / 2);
-  const toAssign = candidates.slice(0, half);
-
-  const usedSeats = new Set<string>();
-  const assignments: CandidateAssignment[] = [];
-  toAssign.forEach((candidate, index) => {
-    const session = sessions[index % sessions.length];
-    let placed = false;
-    for (const hall of halls) {
-      const occupied = usedCount(usedSeats, session.id, hall.id);
-      if (occupied >= hall.capacity) continue;
-      const seatNumber = seatLabel(hall.name, occupied + 1);
-      const key = `${session.id}:${hall.id}:${seatNumber}`;
-      if (usedSeats.has(key)) continue;
-      usedSeats.add(key);
-      assignments.push(
-        assignmentRepo.create({
-          id: `${candidate.id}:${session.id}`,
-          candidateId: candidate.id,
-          sessionId: session.id,
-          hallId: hall.id,
-          seatNumber,
-        })
-      );
-      candidate.status = 'scheduled';
-      candidate.assignedHallId = hall.id;
-      candidate.assignedSeatNumber = seatNumber;
-      candidate.assignedSessionId = session.id;
-      candidate.assignedExamDate = session.examDate;
-      placed = true;
-      break;
-    }
-    if (!placed) candidate.status = 'unscheduled';
-  });
-
-  for (let i = 0; i < assignments.length; i += BATCH) {
-    await assignmentRepo.save(assignments.slice(i, i + BATCH));
-  }
-  for (let i = 0; i < toAssign.length; i += BATCH) {
-    await candidateRepo.save(toAssign.slice(i, i + BATCH));
-  }
-
-  const latestByHall = new Map<string, string[]>();
-  for (const a of assignments) {
-    const arr = latestByHall.get(a.hallId) ?? [];
-    arr.push(a.seatNumber);
-    latestByHall.set(a.hallId, arr);
-  }
-  for (const [hallId, seatNums] of latestByHall) {
-    const rows = await seatRepo.find({
-      where: seatNums.map((n) => ({ hallId, seatNumber: n })),
-    });
-    const seatToCandidate = new Map(assignments.filter((a) => a.hallId === hallId).map((a) => [a.seatNumber, a.candidateId]));
-    for (const seat of rows) {
-      seat.status = 'occupied';
-      seat.candidateId = seatToCandidate.get(seat.seatNumber) ?? null;
-    }
-    await seatRepo.save(rows);
-  }
-
-  await ds.getRepository(ScheduleMeta).save(
-    ds.getRepository(ScheduleMeta).create({
-      id: 'schedule',
-      status: ScheduleState.CONFIRMED,
-      sessionIds: sessions.map((s) => s.id),
-      generatedAt: new Date(),
-      confirmedAt: new Date(),
-      confirmedBy: admin.id,
-      summary: {
-        totalCandidates: half,
-        assignedCount: assignments.length,
-        unassignedCount: half - assignments.length,
-      },
-    })
-  );
-
   await logActivity({
     action: 'seeded',
     userId: admin.id,
@@ -357,15 +252,8 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
 
   return {
     candidateCount: candidates.length,
-    message: `Seeded demo environment in ${Date.now() - started}ms: ${candidates.length} candidates, ${halls.length} halls, ${sessions.length} sessions, ${assignments.length} pre-assigned.`,
+    message: `Imported ${candidates.length} candidates in ${Date.now() - started}ms. Candidates remain unscheduled until a schedule is generated.`,
   };
-}
-
-function usedCount(used: Set<string>, sessionId: string, hallId: string): number {
-  let count = 0;
-  const prefix = `${sessionId}:${hallId}:`;
-  for (const key of used) if (key.startsWith(prefix)) count++;
-  return count;
 }
 
 // Allows `tsx src/services/seeding.ts` to run the seed standalone.

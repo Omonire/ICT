@@ -190,6 +190,266 @@ export interface SchedulePreview {
   groups: SchedulePreviewGroup[];
 }
 
+export interface CustomSubjectCombination {
+  normalizedKey: string;
+  displayName: string;
+  careerGroupId: string | null;
+  careerGroupName: string | null;
+  subjects: string[];
+  candidateCount: number;
+}
+
+export interface SavedCombination {
+  id: string;
+  displayName: string;
+  subjects: string[];
+  careerGroupId: string | null;
+  firstChoice: string | null;
+  candidateCount: number;
+  createdBy: string;
+  createdAt: string;
+}
+
+export interface CustomFirstChoiceStat {
+  firstChoice: string;
+  candidateCount: number;
+  percentage: number;
+}
+
+export interface CustomSchedulingRules {
+  allowHallReuse: boolean;
+  allowSameDayHallReuse: boolean;
+  seatSpacingEnabled: boolean;
+  seatSpacingGap: number;
+  maxCandidatesPerHall: number | null;
+  sessionsPerDay: number | null;
+  availableDates: string[] | null;
+  automaticOverflow: boolean;
+  overflowStrategy: 'sequential' | 'balanced';
+  minBreakBetweenSessions: number;
+}
+
+export interface CustomSchedulingConfig {
+  id: string;
+  name: string;
+  description: string | null;
+  rules: CustomSchedulingRules;
+  isActive: boolean;
+  examPriorityOrder: string[] | null;
+  firstChoicePriority: Record<string, string[]> | null;
+  tieBreaker: TieBreakerRule | null;
+}
+
+export type TieBreakerRule = 'name_asc' | 'name_desc' | 'id_asc' | 'id_desc' | 'random';
+
+export interface CustomCombinationAnalysis {
+  subjectCombination: string;
+  candidateCount: number;
+  firstChoiceDistribution: CustomFirstChoiceStat[];
+  statusBreakdown: {
+    unscheduled: number;
+    scheduled: number;
+    completed: number;
+  };
+}
+
+export interface ReschedulingQueueItem {
+  id: string;
+  candidateId: string;
+  candidate?: { name?: string | null };
+  subjectCombination: string;
+  reason: string;
+  status: string;
+  notes: string | null;
+}
+
+export interface CustomSeatAssignment {
+  candidateId: string;
+  candidateName: string;
+  seatNumber: string;
+}
+
+export interface CustomHallSchedule {
+  hall: Hall;
+  seats: CustomSeatAssignment[];
+  totalAssigned: number;
+}
+
+export interface CustomSessionSchedule {
+  session: Session;
+  halls: CustomHallSchedule[];
+  totalAssigned: number;
+}
+
+export interface CustomDaySchedule {
+  dayNumber: number;
+  date: string;
+  sessions: CustomSessionSchedule[];
+}
+
+export interface CustomSchedulingPreview {
+  subjectCombination: string;
+  displayName: string;
+  candidateCount: number;
+  firstChoiceDistribution: CustomFirstChoiceStat[];
+  availableHalls: Array<{ id: string; name: string; capacity: number }>;
+  totalCapacityPerSession: number;
+  sessions: Session[];
+  estimatedDays: number;
+  capacityUtilization: number;
+  candidatesScheduled: number;
+  candidatesOverflow: number;
+  candidatesCannotSchedule: number;
+  days: CustomDaySchedule[];
+  overflowCandidates: string[];
+  unschedulableCandidates: string[];
+}
+
+export interface CustomScheduleResult {
+  runId: string;
+  subjectCombination: string;
+  displayName: string;
+  candidateCount: number;
+  scheduledCount: number;
+  overflowCount: number;
+  unschedulableCount: number;
+  dayCount: number;
+  days: CustomDaySchedule[];
+  summary: Record<string, unknown>;
+}
+
+export interface ReschedulingEntry {
+  id: string;
+  candidateId: string;
+  candidate?: { id: string; name: string; email: string };
+  schedulingRunId: string | null;
+  subjectCombination: string;
+  reason: string;
+  status: string;
+  targetSessionId: string | null;
+  targetHallId: string | null;
+  targetSeatNumber: string | null;
+  targetExamDate: string | null;
+  assignedAt: string | null;
+  notes: string | null;
+  createdAt: string;
+}
+
+export interface RescheduleCandidateResult {
+  candidateId: string;
+  success: boolean;
+  message: string;
+  assignment?: {
+    sessionId: string;
+    hallId: string;
+    seatNumber: string;
+    examDate: string;
+  };
+}
+
+export interface SchedulingRun {
+  id: string;
+  subjectCombination: string;
+  careerGroupId: string | null;
+  candidateCount: number;
+  scheduledCount: number;
+  overflowCount: number;
+  conflictCount: number;
+  dayCount: number;
+  status: string;
+  configUsed: Record<string, unknown> | null;
+  summary: Record<string, unknown> | null;
+  sessionIds: string[] | null;
+  hallIds: string[] | null;
+  generatedBy: string | null;
+  errorMessage: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  publishedAt: string | null;
+  publishedBy: string | null;
+  isPublished: boolean;
+  createdAt: string;
+}
+
+// ─── Schedule Conflict ─────────────────────────────────────────────────────
+
+export interface ScheduleConflict {
+  id: string;
+  schedulingRunId: string | null;
+  candidateId: string;
+  candidate?: { id: string; name: string; email: string };
+  subjectCombination: string | null;
+  firstChoice: string | null;
+  conflictType: string;
+  description: string;
+  assignedSessionId: string | null;
+  assignedHallId: string | null;
+  assignedExamDate: string | null;
+  assignedSeatNumber: string | null;
+  status: string;
+  resolvedBy: string | null;
+  resolvedAt: string | null;
+  resolutionNotes: string | null;
+  createdAt: string;
+}
+
+// ─── Schedule History ──────────────────────────────────────────────────────
+
+export interface ScheduleHistory {
+  id: string;
+  schedulingRunId: string;
+  name: string;
+  description: string | null;
+  subjectCombination: string | null;
+  candidateCount: number;
+  scheduledCount: number;
+  overflowCount: number;
+  conflictCount: number;
+  dayCount: number;
+  snapshot: Record<string, unknown> | null;
+  configSnapshot: Record<string, unknown> | null;
+  publishedBy: string | null;
+  publishedAt: string;
+  createdAt: string;
+}
+
+// ─── Priority Config ───────────────────────────────────────────────────────
+
+export interface PriorityConfig {
+  id: string | null;
+  name: string;
+  examPriorityOrder: string[];
+  firstChoicePriority: Record<string, string[]>;
+  tieBreaker: TieBreakerRule | null;
+  rules: CustomSchedulingRules | null;
+}
+
+// ─── Priority Scheduling Result ────────────────────────────────────────────
+
+export interface NeedsAttentionItem {
+  candidateId: string;
+  candidateName: string;
+  subjectCombination: string;
+  firstChoice: string;
+  reason: string;
+  conflictType: string;
+}
+
+export interface PrioritySchedulingResult {
+  runId: string;
+  status: string;
+  candidateCount: number;
+  scheduledCount: number;
+  overflowCount: number;
+  conflictCount: number;
+  dayCount: number;
+  days: CustomDaySchedule[];
+  needsAttention: NeedsAttentionItem[];
+  examPriorityOrder: string[];
+  firstChoicePriority: Record<string, string[]>;
+  summary: Record<string, unknown>;
+}
+
 export interface AttendanceSheetRow {
   index: number;
   candidateId: string;

@@ -603,6 +603,9 @@ export default function SchedulePage() {
               <Button variant="outline" onClick={() => void generate()}>
                 <RefreshCw className="h-4 w-4" /> Regenerate
               </Button>
+              <Button variant="destructive-outline" onClick={() => setClearOpen(true)} disabled={clearing}>
+                <Trash2 className="h-4 w-4" /> Reject
+              </Button>
               <Button onClick={() => void approveAll()} disabled={approving}>
                 <UserCheck className="h-4 w-4" />
                 {approving ? 'Approving…' : 'Approve All'}

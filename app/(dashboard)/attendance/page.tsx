@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { Download, Eye, FileSpreadsheet, Printer } from 'lucide-react';
-import { apiGet, downloadFile } from '@/lib/api';
+import { apiGet } from '@/lib/api';
 import { useAuth } from '@/components/auth/auth-context';
 import type { SheetListing } from '@/lib/types';
 import { PageHeader } from '@/components/ui/page-header';
@@ -18,7 +18,6 @@ export default function AttendancePage() {
   const { user } = useAuth();
   const { error } = useToast();
   const [sheets, setSheets] = useState<SheetListing[] | null>(null);
-  const [downloading, setDownloading] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -29,20 +28,6 @@ export default function AttendancePage() {
         setSheets([]);
       });
   }, [user, error]);
-
-  async function downloadPdf(sheet: SheetListing) {
-    setDownloading(sheet.hallId);
-    try {
-      await downloadFile(
-        `/api/attendance-sheets/${sheet.sessionId}/${sheet.hallId}/pdf`,
-        `attendance-${sheet.hallName}-${sheet.examDate}-${sheet.sessionName}.pdf`
-      );
-    } catch (err) {
-      error('Download failed', err instanceof Error ? err.message : undefined);
-    } finally {
-      setDownloading(null);
-    }
-  }
 
   const groups = (sheets ?? []).reduce<Record<string, SheetListing[]>>((acc, s) => {
     const key = `${s.examDate} ${s.sessionName}`;
@@ -103,11 +88,10 @@ export default function AttendancePage() {
                       <Button
                         variant="outline"
                         size="sm"
-                        onClick={() => downloadPdf(sheet)}
-                        disabled={downloading === sheet.hallId}
+                        onClick={() => window.open(`/api/attendance-sheets/${sheet.sessionId}/${sheet.hallId}/pdf`, '_blank')}
                       >
                         <Download className="h-4 w-4" />
-                        {downloading === sheet.hallId ? 'Downloading…' : 'PDF'}
+                        Download PDF
                       </Button>
                       <Link
                         href={`/attendance/sheet/${sheet.sessionId}/${sheet.hallId}`}

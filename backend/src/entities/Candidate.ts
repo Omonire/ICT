@@ -56,6 +56,12 @@ export class Candidate {
   @Column({ name: 'assigned_exam_date', type: 'varchar', nullable: true })
   assignedExamDate: string | null = null;
 
+  @Column({ name: 'jamb_subjects', type: 'jsonb', nullable: true })
+  jambSubjects: string[] | null = null;
+
+  @Column({ name: 'first_choice', type: 'varchar', length: 160, nullable: true })
+  firstChoice: string | null = null;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt!: Date;
 

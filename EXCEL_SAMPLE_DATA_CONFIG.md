@@ -1,8 +1,8 @@
-# Excel Sample Data Configuration
+# Excel Candidate Data Configuration
 
 ## Overview
 
-The codebase is now configured to use the `Exam_Schedulling_4_Python_1.xls` file as default sample data for seeding the database.
+The codebase uses the `Exam_Schedulling_4_Python_1.xls` file as the candidate source when seeding the database.
 
 ## File Details
 
@@ -50,7 +50,7 @@ When you run `npm run seed`:
 5. Allocates exam halls and seats
 6. Pre-assigns approximately 50% of candidates to sessions
 
-If the Excel file is not found, it falls back to generating 520 demo candidates.
+If the Excel file is not found, seeding stops with an error. No candidate records are generated.
 
 ## Setup Instructions
 
@@ -126,7 +126,7 @@ SELECT career_group_id, COUNT(*) FROM candidate GROUP BY career_group_id;
 
 - Verify the file exists at: `backend/data/Exam_Schedulling_4_Python_1.xls`
 - Check that the path is correct (it should be relative to the seeding.ts location)
-- The system will fall back to demo data if the file is missing
+- Seeding will stop if the file is missing; provide the real candidate source and run it again
 
 ### Career Group Mismatch
 
@@ -144,5 +144,5 @@ SELECT career_group_id, COUNT(*) FROM candidate GROUP BY career_group_id;
 
 - The Excel import is lazy-loaded only during seeding
 - Candidates are created with UUIDs from the `genUuid()` utility
-- The system pre-assigns ~50% of candidates to sessions for immediate UI testing
+- Candidates remain unscheduled until an administrator generates a schedule
 - All data is transactional - if seeding fails, the database remains unchanged

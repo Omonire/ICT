@@ -20,6 +20,8 @@ import scheduleRoutes from './routes/schedule';
 import attendanceRoutes from './routes/attendance';
 import analyticsRoutes from './routes/analytics';
 import activityRoutes from './routes/activity';
+import reportRoutes from './routes/reports';
+import customCombinationRoutes from './routes/custom-combinations';
 
 export function createApp(): Express {
   const app = express();
@@ -57,6 +59,8 @@ export function createApp(): Express {
   app.use('/api/attendance-sheets', attendanceRoutes);
   app.use('/api/analytics', analyticsRoutes);
   app.use('/api/activity-log', activityRoutes);
+  app.use('/api', reportRoutes);
+  app.use('/api/custom-combinations', customCombinationRoutes);
 
   app.use(notFoundHandler);
   app.use(errorHandler);

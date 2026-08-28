@@ -3,18 +3,10 @@
 import { useEffect, useRef } from 'react';
 import gsap from 'gsap';
 import { ScrollTrigger } from 'gsap/ScrollTrigger';
-import { CalendarCheck2, CheckCircle2, FileSpreadsheet, LayoutDashboard, Users } from 'lucide-react';
+import { FileSpreadsheet, LayoutDashboard, Users } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 gsap.registerPlugin(ScrollTrigger);
-
-const CANDIDATES = [
-  { id: 'CAN-00231', name: 'ADEYEMI, Kehinde', prog: 'Computer Eng.', status: 'Scheduled', seat: 'A-014' },
-  { id: 'CAN-00187', name: 'NWOSU, Chiamaka', prog: 'Mechatronics', status: 'Scheduled', seat: 'B-032' },
-  { id: 'CAN-00302', name: 'OYELOWO, Tunde', prog: 'Information Tech', status: 'Scheduled', seat: 'A-076' },
-  { id: 'CAN-00115', name: 'MUSA, Amina B.', prog: 'Biomedical Eng.', status: 'Scheduled', seat: 'C-011' },
-  { id: 'CAN-00258', name: 'EZE, David O.', prog: 'Systems Eng.', status: 'Scheduled', seat: 'B-088' },
-];
 
 function ConsoleMock() {
   return (
@@ -45,38 +37,19 @@ function ConsoleMock() {
           ))}
           <div className="mt-6 rounded-xl border border-white/10 bg-white/[0.02] p-3">
             <p className="font-mono text-[10px] text-slate-500">SCHEDULE STATUS</p>
-            <p className="mt-1 flex items-center gap-1.5 text-[12px] font-semibold text-gold-300">
-              <CheckCircle2 className="h-3.5 w-3.5" /> Confirmed
-            </p>
-            <p className="mt-0.5 font-mono text-[10px] text-slate-500">516 / 516 seated</p>
+            <p className="mt-1 text-[12px] font-semibold text-slate-400">Awaiting schedule</p>
+            <p className="mt-0.5 font-mono text-[10px] text-slate-500">No live assignments</p>
           </div>
         </div>
         <div className="min-w-0 flex-1 p-4">
           <div className="mb-3 flex items-center justify-between">
             <p className="text-[13px] font-semibold text-white">Candidates</p>
             <span className="rounded-md border border-white/10 bg-white/5 px-2 py-1 font-mono text-[10px] text-slate-400">
-              {CANDIDATES.length} shown
+              Live records
             </span>
           </div>
-          <div className="space-y-1.5">
-            {CANDIDATES.map((c) => (
-              <div
-                key={c.id}
-                className="flex items-center justify-between gap-3 rounded-lg border border-white/5 bg-white/[0.02] px-3 py-2"
-              >
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="hidden font-mono text-[10px] text-slate-500 sm:inline">{c.id}</span>
-                  <span className="truncate text-[12px] font-medium text-slate-200">{c.name}</span>
-                  <span className="hidden text-[11px] text-slate-500 lg:inline">{c.prog}</span>
-                </div>
-                <div className="flex shrink-0 items-center gap-3">
-                  <span className="font-mono text-[10px] text-gold-300">{c.seat}</span>
-                  <span className="rounded-full border border-gold-400/20 bg-gold-400/10 px-2 py-0.5 text-[9px] font-medium text-gold-300">
-                    {c.status}
-                  </span>
-                </div>
-              </div>
-            ))}
+          <div className="flex min-h-36 items-center justify-center rounded-lg border border-dashed border-white/10 px-4 text-center">
+            <p className="text-[12px] text-slate-500">Live candidate and seat assignments appear here after data is imported and scheduled.</p>
           </div>
         </div>
       </div>
@@ -172,7 +145,7 @@ export default function Showcase() {
 
           <div data-vt-caption className="pointer-events-none absolute inset-x-0 bottom-8 flex items-center justify-between px-6 font-mono text-[10px] uppercase opacity-0" style={{ opacity: 0 }}>
             <span className="tracking-[0.3em] text-slate-500">ExamFlow / command center</span>
-            <span className="tracking-[0.3em] text-gold-300">516 candidates · 5 halls · 0 conflicts</span>
+            <span className="tracking-[0.3em] text-gold-300">Live candidates · live halls · live conflicts</span>
           </div>
         </div>
       </div>

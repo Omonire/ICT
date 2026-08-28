@@ -109,12 +109,21 @@ export function generateExcelCandidates(
     const lastName = row['Last Name'].trim();
     const examNo = String(row['Exam No']).padStart(8, '0');
 
+    const jambSubjects = [
+      row['Jamb Subject1'],
+      row['Jamb Subject2'],
+      row['Jamb Subject3'],
+      row['Jamb Subject4'],
+    ].filter(Boolean).map((s: string) => String(s).trim());
+
     return {
       name: `${firstName} ${lastName}`,
       email: `${sanitizeForEmail(firstName)}.${sanitizeForEmail(lastName)}.${examNo}@student.fut.edu.ng`,
       matricNo: `FUT/2024/${examNo}`,
       careerGroupId: careerGroupId || undefined,
       status: 'unscheduled',
+      jambSubjects: jambSubjects.length > 0 ? jambSubjects : null,
+      firstChoice: row['First Choice']?.trim() || null,
     };
   });
 }

@@ -5,9 +5,28 @@ import { CandidateAssignment } from '../entities/CandidateAssignment';
 import { Hall } from '../entities/Hall';
 import { Seat } from '../entities/Seat';
 import { ScheduleMeta, ScheduleState } from '../entities/ScheduleMeta';
+import { SchedulingConfig } from '../entities/SchedulingConfig';
+import { SchedulingRun } from '../entities/SchedulingRun';
+import { ReschedulingEntry } from '../entities/ReschedulingEntry';
+import { CareerGroup } from '../entities/CareerGroup';
 import { AppError, asyncHandler } from '../utils/errors';
 import { generateSchedule } from '../services/scheduler';
+import {
+  analyzeSubjectCombinations,
+  calculateFirstChoiceDistribution,
+  previewScheduling,
+  generateScheduling,
+  regenerateDay,
+  regenerateSession,
+  getReschedulingQueue,
+  rescheduleCandidate,
+  rescheduleCandidates,
+  normalizeSubjectCombination,
+  displaySubjectCombination,
+  getCandidatesForCombination,
+} from '../services/scheduling-engine';
 import { logActivity } from '../services/activity-log';
+import { genUuid } from '../utils/ids';
 
 async function getOrCreateMeta(): Promise<ScheduleMeta> {
   const repo = AppDataSource.getRepository(ScheduleMeta);
@@ -411,4 +430,564 @@ export const clear = asyncHandler(async (req: Request, res: Response) => {
   });
 
   res.json({ data: { status: ScheduleState.NONE, assignmentCount: 0 } });
+});
+
+// ─── Scheduling Engine Handlers ─────────────────────────────────────────────
+
+/**
+ * GET /api/schedule/subjects
+ * List all unique subjects from candidates.
+ */
+export const listSubjects = asyncHandler(async (_req: Request, res: Response) => {
+  const ds = AppDataSource;
+  const rows = await ds.query(`
+    SELECT DISTINCT LOWER(TRIM(elem::text)) AS subject
+    FROM candidates, jsonb_array_elements_text(jamb_subjects) elem
+    WHERE jamb_subjects IS NOT NULL AND jsonb_array_length(jamb_subjects) > 0
+    ORDER BY subject
+  `);
+  const subjects: string[] = rows.map((r: { subject: string }) => r.subject);
+  res.json({ data: subjects });
+});
+
+/**
+ * GET /api/schedule/subject-combinations
+ * List all unique subject combinations with candidate counts.
+ */
+export const subjectCombinations = asyncHandler(async (_req: Request, res: Response) => {
+  const ds = AppDataSource;
+
+  // Optimized: use SQL to group candidates by jambSubjects directly
+  const rows = await ds.query(`
+    SELECT
+      jamb_subjects as raw_subjects,
+      career_group_id,
+      COUNT(*)::int as "candidateCount"
+    FROM candidates
+    WHERE jamb_subjects IS NOT NULL AND jsonb_array_length(jamb_subjects) > 0
+    GROUP BY jamb_subjects, career_group_id
+    ORDER BY "candidateCount" DESC
+  `);
+
+  const groupRepo = ds.getRepository(CareerGroup);
+  const groups = await groupRepo.find();
+  const groupMap = new Map(groups.map((g) => [g.id, g]));
+
+  const combinationMap = new Map<string, {
+    careerGroupId: string | null;
+    careerGroupName: string | null;
+    candidateCount: number;
+    subjects: string[];
+  }>();
+
+  for (const row of rows) {
+    const subjects: string[] = Array.isArray(row.raw_subjects)
+      ? row.raw_subjects
+      : typeof row.raw_subjects === 'string'
+        ? JSON.parse(row.raw_subjects)
+        : [];
+    if (subjects.length === 0) continue;
+
+    const normalizedKey = normalizeSubjectCombination(subjects);
+    const existing = combinationMap.get(normalizedKey);
+    if (existing) {
+      existing.candidateCount += row.candidateCount;
+    } else {
+      const group = row.career_group_id ? groupMap.get(row.career_group_id) : null;
+      combinationMap.set(normalizedKey, {
+        careerGroupId: row.career_group_id ?? null,
+        careerGroupName: group?.name ?? null,
+        candidateCount: row.candidateCount,
+        subjects,
+      });
+    }
+  }
+
+  const combinations = [...combinationMap.entries()]
+    .map(([key, info]) => ({
+      normalizedKey: key,
+      displayName: displaySubjectCombination(key),
+      subjects: info.subjects.sort(),
+      candidateCount: info.candidateCount,
+      careerGroupId: info.careerGroupId,
+      careerGroupName: info.careerGroupName,
+      firstChoiceDistribution: [] as { firstChoice: string; candidateCount: number; percentage: number }[],
+    }))
+    .sort((a, b) => b.candidateCount - a.candidateCount);
+
+  // Fetch first-choice distribution per combination via SQL
+  const distRows = await ds.query(`
+    SELECT jamb_subjects, first_choice, COUNT(*)::int as cnt
+    FROM candidates
+    WHERE jamb_subjects IS NOT NULL AND jsonb_array_length(jamb_subjects) > 0
+      AND first_choice IS NOT NULL
+    GROUP BY jamb_subjects, first_choice
+  `);
+
+  const comboByIndex = new Map(combinations.map((c, i) => [c.normalizedKey, i]));
+  for (const row of distRows) {
+    const subjects: string[] = Array.isArray(row.jamb_subjects)
+      ? row.jamb_subjects
+      : typeof row.jamb_subjects === 'string'
+        ? JSON.parse(row.jamb_subjects)
+        : [];
+    if (subjects.length === 0) continue;
+    const key = normalizeSubjectCombination(subjects);
+    const idx = comboByIndex.get(key);
+    if (idx === undefined) continue;
+    const combo = combinations[idx];
+    const fc = (row.first_choice as string).trim();
+    const existing = combo.firstChoiceDistribution.find((d) => d.firstChoice === fc);
+    if (existing) {
+      existing.candidateCount += row.cnt;
+    } else {
+      combo.firstChoiceDistribution.push({ firstChoice: fc, candidateCount: row.cnt, percentage: 0 });
+    }
+  }
+
+  // Compute percentages
+  for (const combo of combinations) {
+    for (const fc of combo.firstChoiceDistribution) {
+      fc.percentage = combo.candidateCount > 0
+        ? Math.round((fc.candidateCount / combo.candidateCount) * 100 * 100) / 100
+        : 0;
+    }
+    combo.firstChoiceDistribution.sort((a, b) => b.candidateCount - a.candidateCount);
+  }
+
+  res.json({ data: combinations });
+});
+
+/**
+ * GET /api/schedule/combination-analysis/:normalizedKey
+ * Get detailed analysis for a specific subject combination.
+ */
+export const combinationAnalysis = asyncHandler(async (req: Request, res: Response) => {
+  const { normalizedKey } = req.params;
+
+  const candidateRepo = AppDataSource.getRepository(Candidate);
+  const groupRepo = AppDataSource.getRepository(CareerGroup);
+
+  const CHUNK = 5000;
+  let allCandidates: Candidate[] = [];
+  let offset = 0;
+  while (true) {
+    const batch = await candidateRepo.find({ skip: offset, take: CHUNK });
+    if (batch.length === 0) break;
+    allCandidates = allCandidates.concat(batch);
+    if (batch.length < CHUNK) break;
+    offset += CHUNK;
+  }
+
+  const groups = await groupRepo.find();
+  const combinationCandidates = getCandidatesForCombination(allCandidates, normalizedKey);
+
+  if (combinationCandidates.length === 0) {
+    throw AppError.notFound('No candidates found for this subject combination');
+  }
+
+  const firstChoiceDistribution = calculateFirstChoiceDistribution(
+    allCandidates,
+    normalizedKey
+  );
+
+  // Get status breakdown
+  const statusBreakdown = {
+    unscheduled: combinationCandidates.filter((c) => c.status === CandidateStatus.UNSCHEDULED).length,
+    scheduled: combinationCandidates.filter((c) => c.status === CandidateStatus.SCHEDULED).length,
+    completed: combinationCandidates.filter((c) => c.status === CandidateStatus.COMPLETED).length,
+  };
+
+  res.json({
+    data: {
+      subjectCombination: normalizedKey,
+      candidateCount: combinationCandidates.length,
+      firstChoiceDistribution,
+      statusBreakdown,
+    },
+  });
+});
+
+/**
+ * POST /api/schedule/preview-new
+ * Preview scheduling for one or more subject combinations without persisting.
+ */
+export const previewNew = asyncHandler(async (req: Request, res: Response) => {
+  const { subjectCombination, subjectCombinations, sessionIds, configId } = req.body as {
+    subjectCombination?: string;
+    subjectCombinations?: string[];
+    sessionIds: string[];
+    configId?: string;
+  };
+
+  const combos = subjectCombinations || (subjectCombination ? [subjectCombination] : []);
+  if (combos.length === 0) throw AppError.badRequest('Select at least one subject combination');
+
+  const BATCH_SIZE = 5;
+  let totalCandidates = 0;
+  let totalDays = 0;
+  let lastResult: any = null;
+
+  for (let i = 0; i < combos.length; i += BATCH_SIZE) {
+    const batch = combos.slice(i, i + BATCH_SIZE);
+    const results = await Promise.all(
+      batch.map((combo) => previewScheduling(combo, sessionIds, configId))
+    );
+    for (const result of results) {
+      totalCandidates += result.candidateCount;
+      totalDays = Math.max(totalDays, result.estimatedDays);
+      lastResult = result;
+    }
+  }
+
+  res.json({ data: {
+    candidateCount: totalCandidates,
+    estimatedDays: totalDays,
+    sessionCount: sessionIds.length,
+    ...(lastResult || {}),
+  }});
+});
+
+/**
+ * POST /api/schedule/generate-new
+ * Generate and persist scheduling for one or more subject combinations.
+ */
+export const generateNew = asyncHandler(async (req: Request, res: Response) => {
+  const { subjectCombination, subjectCombinations, sessionIds, configId } = req.body as {
+    subjectCombination?: string;
+    subjectCombinations?: string[];
+    sessionIds: string[];
+    configId?: string;
+  };
+
+  const combos = subjectCombinations || (subjectCombination ? [subjectCombination] : []);
+  if (combos.length === 0) throw AppError.badRequest('Select at least one subject combination');
+
+  let totalScheduled = 0;
+  let totalOverflow = 0;
+  let totalDays = 0;
+  const runIds: string[] = [];
+
+  for (const combo of combos) {
+    const result = await generateScheduling(
+      combo,
+      sessionIds,
+      req.user?.id ?? null,
+      configId
+    );
+    totalScheduled += result.scheduledCount;
+    totalOverflow += result.overflowCount;
+    totalDays = Math.max(totalDays, result.dayCount);
+    runIds.push(result.runId);
+
+    await logActivity({
+      action: 'schedule.engine.generated',
+      userId: req.user?.id ?? null,
+      entityType: 'scheduling_run',
+      entityId: result.runId,
+      details: {
+        subjectCombination: result.displayName,
+        scheduledCount: result.scheduledCount,
+        overflowCount: result.overflowCount,
+        dayCount: result.dayCount,
+      },
+    });
+  }
+
+  res.json({ data: {
+    scheduledCount: totalScheduled,
+    overflowCount: totalOverflow,
+    dayCount: totalDays,
+    runId: runIds.length === 1 ? runIds[0] : runIds.join(','),
+    displayName: combos.length === 1 ? `${combos.length} combination` : `${combos.length} combinations`,
+  }});
+});
+
+/**
+ * POST /api/schedule/regenerate-day
+ * Regenerate scheduling for a specific day.
+ */
+export const regenerateDayHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { runId, dayDate } = req.body as {
+    runId: string;
+    dayDate: string;
+  };
+
+  const result = await regenerateDay(runId, dayDate, req.user?.id ?? null);
+
+  await logActivity({
+    action: 'schedule.engine.regenerated_day',
+    userId: req.user?.id ?? null,
+    entityType: 'scheduling_run',
+    entityId: runId,
+    details: { dayDate, scheduled: result.scheduledCount },
+  });
+
+  res.json({ data: result });
+});
+
+/**
+ * POST /api/schedule/regenerate-session
+ * Regenerate scheduling for a specific session.
+ */
+export const regenerateSessionHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { runId, sessionId } = req.body as {
+    runId: string;
+    sessionId: string;
+  };
+
+  const result = await regenerateSession(runId, sessionId, req.user?.id ?? null);
+
+  await logActivity({
+    action: 'schedule.engine.regenerated_session',
+    userId: req.user?.id ?? null,
+    entityType: 'scheduling_run',
+    entityId: runId,
+    details: { sessionId, scheduled: result.scheduledCount },
+  });
+
+  res.json({ data: result });
+});
+
+/**
+ * GET /api/schedule/rescheduling-queue
+ * Get the rescheduling queue.
+ */
+export const reschedulingQueue = asyncHandler(async (req: Request, res: Response) => {
+  const status = req.query.status as string | undefined;
+  const limit = Math.min(Number(req.query.limit) || 100, 500);
+  const offset = Number(req.query.offset) || 0;
+  const { entries, total } = await getReschedulingQueue(status, limit, offset);
+  res.json({ data: entries, meta: { total, limit, offset } });
+});
+
+/**
+ * POST /api/schedule/reschedule-candidate
+ * Reschedule a single candidate.
+ */
+export const rescheduleCandidateHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { entryId, targetSessionId, targetHallId } = req.body as {
+    entryId: string;
+    targetSessionId: string;
+    targetHallId: string;
+  };
+
+  const result = await rescheduleCandidate(
+    entryId,
+    targetSessionId,
+    targetHallId,
+    req.user?.id ?? null
+  );
+
+  if (!result.success) {
+    throw AppError.badRequest(result.message);
+  }
+
+  await logActivity({
+    action: 'schedule.engine.rescheduled',
+    userId: req.user?.id ?? null,
+    entityType: 'rescheduling_entry',
+    entityId: entryId,
+    details: { candidateId: result.candidateId, assignment: result.assignment },
+  });
+
+  res.json({ data: result });
+});
+
+/**
+ * POST /api/schedule/reschedule-bulk
+ * Bulk reschedule multiple candidates.
+ */
+export const rescheduleBulkHandler = asyncHandler(async (req: Request, res: Response) => {
+  const { entryIds, targetSessionId, targetHallId } = req.body as {
+    entryIds: string[];
+    targetSessionId: string;
+    targetHallId: string;
+  };
+
+  const results = await rescheduleCandidates(
+    entryIds,
+    targetSessionId,
+    targetHallId,
+    req.user?.id ?? null
+  );
+
+  const succeeded = results.filter((r) => r.success);
+  const failed = results.filter((r) => !r.success);
+
+  await logActivity({
+    action: 'schedule.engine.rescheduled_bulk',
+    userId: req.user?.id ?? null,
+    entityType: 'rescheduling_entry',
+    details: {
+      total: entryIds.length,
+      succeeded: succeeded.length,
+      failed: failed.length,
+    },
+  });
+
+  res.json({
+    data: {
+      succeeded,
+      failed,
+      summary: {
+        total: entryIds.length,
+        succeededCount: succeeded.length,
+        failedCount: failed.length,
+      },
+    },
+  });
+});
+
+/**
+ * GET /api/schedule/runs
+ * List all scheduling runs.
+ */
+export const listRuns = asyncHandler(async (_req: Request, res: Response) => {
+  const repo = AppDataSource.getRepository(SchedulingRun);
+  const runs = await repo.find({
+    order: { createdAt: 'DESC' },
+    take: 50,
+  });
+  res.json({ data: runs });
+});
+
+/**
+ * GET /api/schedule/runs/:id
+ * Get a specific scheduling run.
+ */
+export const getRun = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const repo = AppDataSource.getRepository(SchedulingRun);
+  const run = await repo.findOne({ where: { id } });
+  if (!run) throw AppError.notFound('Scheduling run not found');
+  res.json({ data: run });
+});
+
+// ─── Scheduling Config Handlers ─────────────────────────────────────────────
+
+/**
+ * GET /api/schedule/configs
+ * List all scheduling configurations.
+ */
+export const listConfigs = asyncHandler(async (_req: Request, res: Response) => {
+  const repo = AppDataSource.getRepository(SchedulingConfig);
+  const configs = await repo.find({ order: { createdAt: 'DESC' } });
+  res.json({ data: configs });
+});
+
+/**
+ * GET /api/schedule/configs/active
+ * Get the active scheduling configuration.
+ */
+export const getActiveConfig = asyncHandler(async (_req: Request, res: Response) => {
+  const repo = AppDataSource.getRepository(SchedulingConfig);
+  const active = await repo.findOne({ where: { isActive: true } });
+  res.json({ data: active });
+});
+
+/**
+ * POST /api/schedule/configs
+ * Create a new scheduling configuration.
+ */
+export const createConfig = asyncHandler(async (req: Request, res: Response) => {
+  const { name, description, rules, examPriorityOrder, firstChoicePriority, tieBreaker } = req.body as {
+    name: string;
+    description?: string;
+    rules?: Record<string, unknown>;
+    examPriorityOrder?: string[];
+    firstChoicePriority?: Record<string, string[]>;
+    tieBreaker?: string;
+  };
+
+  const repo = AppDataSource.getRepository(SchedulingConfig);
+
+  // Check for duplicate name
+  const existing = await repo.findOne({ where: { name } });
+  if (existing) {
+    throw AppError.conflict('A configuration with this name already exists');
+  }
+
+  const config = repo.create({
+    id: genUuid(),
+    name,
+    description: description ?? null,
+    rules: (rules as any) ?? undefined,
+    examPriorityOrder: examPriorityOrder ?? null,
+    firstChoicePriority: firstChoicePriority ?? null,
+    tieBreaker: (tieBreaker as any) ?? null,
+    isActive: false,
+  });
+  await repo.save(config);
+
+  res.status(201).json({ data: config });
+});
+
+/**
+ * PUT /api/schedule/configs/:id
+ * Update a scheduling configuration.
+ */
+export const updateConfig = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const { name, description, rules, examPriorityOrder, firstChoicePriority, tieBreaker } = req.body as {
+    name?: string;
+    description?: string;
+    rules?: Record<string, unknown>;
+    examPriorityOrder?: string[];
+    firstChoicePriority?: Record<string, string[]>;
+    tieBreaker?: string;
+  };
+
+  const repo = AppDataSource.getRepository(SchedulingConfig);
+  const config = await repo.findOne({ where: { id } });
+  if (!config) throw AppError.notFound('Configuration not found');
+
+  if (name !== undefined) config.name = name;
+  if (description !== undefined) config.description = description;
+  if (rules !== undefined) config.rules = rules as any;
+  if (examPriorityOrder !== undefined) config.examPriorityOrder = examPriorityOrder;
+  if (firstChoicePriority !== undefined) config.firstChoicePriority = firstChoicePriority;
+  if (tieBreaker !== undefined) config.tieBreaker = tieBreaker as any;
+
+  await repo.save(config);
+  res.json({ data: config });
+});
+
+/**
+ * POST /api/schedule/configs/:id/activate
+ * Set a configuration as active.
+ */
+export const activateConfig = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const repo = AppDataSource.getRepository(SchedulingConfig);
+
+  // Deactivate all others
+  await repo.update({ isActive: true }, { isActive: false });
+
+  const config = await repo.findOne({ where: { id } });
+  if (!config) throw AppError.notFound('Configuration not found');
+
+  config.isActive = true;
+  await repo.save(config);
+
+  res.json({ data: config });
+});
+
+/**
+ * DELETE /api/schedule/configs/:id
+ * Delete a scheduling configuration.
+ */
+export const deleteConfig = asyncHandler(async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const repo = AppDataSource.getRepository(SchedulingConfig);
+
+  const config = await repo.findOne({ where: { id } });
+  if (!config) throw AppError.notFound('Configuration not found');
+
+  if (config.isActive) {
+    throw AppError.badRequest('Cannot delete the active configuration');
+  }
+
+  await repo.remove(config);
+  res.json({ success: true });
 });

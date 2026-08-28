@@ -51,7 +51,7 @@ npm run dev
 | Exam Halls    | 5      | Seeding service        |
 | Seats         | ~530   | Generated (1 per seat) |
 | Sessions      | ~12    | Generated (next week)  |
-| Pre-assigned  | ~7,852 | 50% of candidates      |
+| Pre-assigned  | 0      | Scheduling is explicit |
 
 ---
 
@@ -76,7 +76,7 @@ npm run dev
 
 ## ❌ If Excel File is Missing
 
-The system automatically falls back to **520 demo candidates**. No errors, no crashes.
+Seeding stops without creating candidate records. Add the real Excel source before running the seed command.
 
 ---
 

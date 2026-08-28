@@ -19,6 +19,8 @@ export interface ImportRow {
   email: string;
   matricNo: string | null;
   careerGroup: string;
+  jambSubjects: string[] | null;
+  firstChoice: string | null;
 }
 
 export interface ImportErrorRow {
@@ -106,11 +108,20 @@ export function parseCandidateCsv(
       const examNo = raw['Exam No'] ? String(raw['Exam No']).padStart(8, '0') : '';
       const program = raw['First Choice'] || '';
       
+      const jambSubjects = [
+        raw['Jamb Subject1'],
+        raw['Jamb Subject2'],
+        raw['Jamb Subject3'],
+        raw['Jamb Subject4'],
+      ].filter(Boolean).map((s: string) => String(s).trim().toLowerCase());
+
       processedRow = {
         name: `${firstName} ${lastName}`,
         email: `${sanitizeForEmail(firstName)}.${sanitizeForEmail(lastName)}.${examNo}@student.fut.edu.ng`,
         matricNo: examNo ? `FUT/2024/${examNo}` : null,
         careerGroup: mapProgramToCareerGroup(program),
+        jambSubjects: jambSubjects.length > 0 ? jambSubjects : null,
+        firstChoice: raw['First Choice']?.trim() || null,
       };
     }
     
@@ -119,6 +130,8 @@ export function parseCandidateCsv(
       email: ((processedRow.email || raw.email) ?? '').toLowerCase().trim(),
       matricNo: processedRow.matricNo || raw.matricNo || raw.matric || raw.regNo || null,
       careerGroup: processedRow.careerGroup || raw.careerGroup,
+      jambSubjects: processedRow.jambSubjects || null,
+      firstChoice: processedRow.firstChoice || null,
     });
 
     if (!parsed.success) {
@@ -150,6 +163,8 @@ export function parseCandidateCsv(
       email,
       matricNo: parsed.data.matricNo ?? null,
       careerGroup: parsed.data.careerGroup,
+      jambSubjects: parsed.data.jambSubjects ?? null,
+      firstChoice: parsed.data.firstChoice ?? null,
     });
   });
 
@@ -233,6 +248,8 @@ export async function commitImport(importId: string): Promise<ImportCommitResult
       matricNo: row.matricNo,
       careerGroupId: group.id,
       status: 'unscheduled',
+      jambSubjects: row.jambSubjects || null,
+      firstChoice: row.firstChoice || null,
     });
     imported.push(candidate);
     existingEmails.add(row.email);

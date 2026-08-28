@@ -5,15 +5,18 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import {
   Activity,
+  AlertTriangle,
   CalendarClock,
   CalendarDays,
   FileSpreadsheet,
   LayoutDashboard,
+  ListChecks,
   LogOut,
   MapPin,
   Settings,
   Shield,
   ShieldCheck,
+  SlidersHorizontal,
   Sparkles,
   Users,
 } from 'lucide-react';
@@ -37,8 +40,12 @@ const NAV = [
     items: [
       { href: '/candidates', label: 'Candidates', icon: Users },
       { href: '/halls', label: 'Halls', icon: MapPin },
+      { href: '/hall-layout', label: 'Hall layout', icon: MapPin },
       { href: '/sessions', label: 'Sessions', icon: CalendarDays },
       { href: '/schedule', label: 'Schedule', icon: CalendarClock },
+      { href: '/scheduling-config', label: 'Scheduling config', icon: SlidersHorizontal },
+      { href: '/custom-scheduling', label: 'Custom scheduling', icon: ListChecks },
+      { href: '/overflow', label: 'Day rescheduling', icon: AlertTriangle },
       { href: '/attendance', label: 'Attendance sheets', icon: FileSpreadsheet },
     ],
   },

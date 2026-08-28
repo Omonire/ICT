@@ -10,7 +10,7 @@ import type { AuthPayload } from '../middleware/auth';
 
 const COOKIE_NAME = 'token';
 
-function setTokenCookie(res: Response, payload: AuthPayload): void {
+function setTokenCookie(res: Response, payload: AuthPayload): string {
   const token = jwt.sign(payload, env.jwtSecret, {
     expiresIn: env.jwtExpiresIn as jwt.SignOptions['expiresIn'],
   });
@@ -21,6 +21,7 @@ function setTokenCookie(res: Response, payload: AuthPayload): void {
     maxAge: 7 * 24 * 60 * 60 * 1000,
     path: '/',
   });
+  return token;
 }
 
 export const login = asyncHandler(async (req: Request, res: Response) => {
@@ -36,10 +37,10 @@ export const login = asyncHandler(async (req: Request, res: Response) => {
     throw AppError.unauthorized('Invalid email or password');
   }
 
-  setTokenCookie(res, { sub: user.id, email: user.email, role: user.role });
+  const token = setTokenCookie(res, { sub: user.id, email: user.email, role: user.role });
   await logActivity({ action: 'login', userId: user.id, entityType: 'user', entityId: user.id });
 
-  res.json({ user: user.toSafeJSON() });
+  res.json({ user: user.toSafeJSON(), token });
 });
 
 export const logout = asyncHandler(async (_req: Request, res: Response) => {

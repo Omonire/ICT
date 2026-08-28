@@ -41,8 +41,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [refresh]);
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await apiPost<{ user: User }>('/api/auth/login', { email, password });
+    const res = await apiPost<{ user: User; token: string }>('/api/auth/login', { email, password });
     setUser(res.user);
+    if (res.token) {
+      localStorage.setItem('ws_token', res.token);
+      window.dispatchEvent(new Event('examflow:login'));
+    }
     return res.user;
   }, []);
 
@@ -51,6 +55,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       await apiPost<{ success: boolean }>('/api/auth/logout');
     } finally {
       setUser(null);
+      localStorage.removeItem('ws_token');
+      window.dispatchEvent(new Event('examflow:logout'));
     }
   }, []);
 

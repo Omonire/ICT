@@ -99,13 +99,13 @@ Serverless environments can't run the SQLite file database reliably. You need a 
 
 In the **Configure Project** screen:
 
-| Setting              | Value                                     |
-| -------------------- | ----------------------------------------- |
-| **Project Name**     | `examflow-api`                            |
+| Setting              | Value                                                 |
+| -------------------- | ----------------------------------------------------- |
+| **Project Name**     | `examflow-api`                                        |
 | **Framework Preset** | **Other** (do NOT pick Next.js — this is the backend) |
-| **Root Directory**   | *(leave at repo root — do not change)*    |
-| **Build Command**    | *(leave empty)*                           |
-| **Output Directory** | *(leave empty)*                           |
+| **Root Directory**   | _(leave at repo root — do not change)_                |
+| **Build Command**    | _(leave empty)_                                       |
+| **Output Directory** | _(leave empty)_                                       |
 
 > The backend is TypeScript. Vercel's Node.js builder compiles `backend/src/app.ts` on the fly — no build step needed.
 
@@ -130,13 +130,13 @@ If your plan allows, set **Max Duration** to `30` seconds (cold starts with DB s
 
 While in **Settings**, go to **Environment Variables** and add:
 
-| Name                 | Value                                              | Environments      |
-| -------------------- | -------------------------------------------------- | ----------------- |
-| `DATABASE_URL`       | Your PostgreSQL connection string from step 3      | Production (and Preview if you want) |
-| `JWT_SECRET`         | A long random string (see below)                   | Production        |
-| `JWT_EXPIRES_IN`     | `7d`                                               | Production        |
-| `COOKIE_SECURE`      | `true`                                             | Production        |
-| `SEED_ON_STARTUP`    | `true` for the first deploy (seeds demo data), then `false` | Production |
+| Name              | Value                                                                           | Environments                         |
+| ----------------- | ------------------------------------------------------------------------------- | ------------------------------------ |
+| `DATABASE_URL`    | Your PostgreSQL connection string from step 3                                   | Production (and Preview if you want) |
+| `JWT_SECRET`      | A long random string (see below)                                                | Production                           |
+| `JWT_EXPIRES_IN`  | `7d`                                                                            | Production                           |
+| `COOKIE_SECURE`   | `true`                                                                          | Production                           |
+| `SEED_ON_STARTUP` | `true` for the first deploy (imports the configured Excel source), then `false` | Production                           |
 
 **Generate a JWT secret:**
 
@@ -144,7 +144,7 @@ While in **Settings**, go to **Environment Variables** and add:
 openssl rand -base64 64
 ```
 
-> **First deploy:** leave `SEED_ON_STARTUP=true`. The first cold start will create the tables and seed 520 candidates, 5 halls, 12 sessions, and the 3 demo accounts. After confirming the seed worked, set it to `false`.
+> **First deploy:** leave `SEED_ON_STARTUP=true`. The first cold start will create the tables and import the configured candidate source. After confirming the import worked, set it to `false`.
 
 ### 4.5 Deploy
 
@@ -178,20 +178,20 @@ If both work, the backend is live. Note the URL — you'll need it in step 5.
 2. **Add New → Project → Import** the `Omonire/ICT` repo again
 3. In **Configure Project**:
 
-| Setting              | Value                                    |
-| -------------------- | ---------------------------------------- |
-| **Project Name**     | `examflow` (or `examflow-frontend`)      |
-| **Framework Preset** | **Next.js** (Vercel auto-detects this)   |
-| **Root Directory**   | *(repo root)*                            |
-| **Build Command**    | `npm run build --workspace backend && next build` *(optional — see note)* |
+| Setting              | Value                                                                     |
+| -------------------- | ------------------------------------------------------------------------- |
+| **Project Name**     | `examflow` (or `examflow-frontend`)                                       |
+| **Framework Preset** | **Next.js** (Vercel auto-detects this)                                    |
+| **Root Directory**   | _(repo root)_                                                             |
+| **Build Command**    | `npm run build --workspace backend && next build` _(optional — see note)_ |
 
 > **Note on build command:** The backend must be compiled before `next build` because Next.js type-checks imported modules that reference `backend/`. Vercel's auto-detected build command runs `next build` only — if you hit type errors during the frontend build, set the build command explicitly to the one above.
 
 ### 5.2 Set environment variables
 
-| Name                   | Value                                  |
-| ---------------------- | -------------------------------------- |
-| `NEXT_PUBLIC_API_URL`  | `https://examflow-api.vercel.app/api`  |
+| Name                  | Value                                 |
+| --------------------- | ------------------------------------- |
+| `NEXT_PUBLIC_API_URL` | `https://examflow-api.vercel.app/api` |
 
 ### 5.3 Deploy
 
@@ -228,7 +228,7 @@ The app does **not** currently read `NEXT_PUBLIC_API_URL` in `lib/api.ts` (it us
 2. **Or** update `lib/api.ts` to prefix requests with `NEXT_PUBLIC_API_URL`:
 
    ```ts
-   const base = process.env.NEXT_PUBLIC_API_URL ?? '';
+   const base = process.env.NEXT_PUBLIC_API_URL ?? "";
    // in api(): const res = await fetch(base + path, {...})
    ```
 
@@ -260,20 +260,20 @@ If the login fails with a **network error**, see [Troubleshooting](#10-troublesh
 
 ### Backend project (`examflow-api`)
 
-| Variable            | Required | Description                                              |
-| ------------------- | -------- | -------------------------------------------------------- |
-| `DATABASE_URL`      | Yes      | PostgreSQL connection string                             |
-| `JWT_SECRET`        | Yes      | Long random secret for signing tokens                    |
-| `JWT_EXPIRES_IN`    | No       | Token lifetime (default `7d`)                            |
-| `COOKIE_SECURE`     | No       | `true` in production (HTTPS-only cookies)                |
-| `SEED_ON_STARTUP`   | No       | `true` seeds demo data on cold start (default `true`)    |
+| Variable          | Required | Description                                           |
+| ----------------- | -------- | ----------------------------------------------------- |
+| `DATABASE_URL`    | Yes      | PostgreSQL connection string                          |
+| `JWT_SECRET`      | Yes      | Long random secret for signing tokens                 |
+| `JWT_EXPIRES_IN`  | No       | Token lifetime (default `7d`)                         |
+| `COOKIE_SECURE`   | No       | `true` in production (HTTPS-only cookies)             |
+| `SEED_ON_STARTUP` | No       | `true` seeds demo data on cold start (default `true`) |
 
 ### Frontend project (`examflow`)
 
-| Variable                | Required | Description                                        |
-| ----------------------- | -------- | -------------------------------------------------- |
-| `NEXT_PUBLIC_API_URL`   | If using direct calls | Base URL of the backend API, e.g. `https://examflow-api.vercel.app/api` |
-| `API_PROXY_TARGET`      | If using rewrites | Backend origin, e.g. `https://examflow-api.vercel.app` |
+| Variable              | Required              | Description                                                             |
+| --------------------- | --------------------- | ----------------------------------------------------------------------- |
+| `NEXT_PUBLIC_API_URL` | If using direct calls | Base URL of the backend API, e.g. `https://examflow-api.vercel.app/api` |
+| `API_PROXY_TARGET`    | If using rewrites     | Backend origin, e.g. `https://examflow-api.vercel.app`                  |
 
 ---
 
@@ -302,6 +302,7 @@ To deploy a preview (test branch): open a PR or push a branch — Vercel creates
 **Cause:** The frontend can't reach the backend, or the JWT cookie is being blocked cross-origin.
 
 **Fixes:**
+
 - Confirm `https://examflow-api.vercel.app/api/health` returns `ok`
 - Check `NEXT_PUBLIC_API_URL` (direct calls) or `API_PROXY_TARGET` (rewrite) is set correctly
 - Use the **rewrite/proxy approach** (same-origin) so the httpOnly cookie flows correctly
@@ -312,6 +313,7 @@ To deploy a preview (test branch): open a PR or push a branch — Vercel creates
 **Cause:** `DATABASE_URL` is missing or the PostgreSQL connection string is invalid.
 
 **Fixes:**
+
 - Confirm `DATABASE_URL` is set in the **backend** project's Production env
 - Verify the connection string format: `postgresql://user:password@host:5432/dbname?sslmode=require`
 - Test locally: `psql "your-connection-string"` — should connect
@@ -322,6 +324,7 @@ To deploy a preview (test branch): open a PR or push a branch — Vercel creates
 **Cause:** The serverless function syncs the schema and (optionally) seeds on the first cold start.
 
 **Fixes:**
+
 - Set `SEED_ON_STARTUP=false` after the first successful seed
 - Set the function's **Max Duration** to 30s
 - Vercel Hobby functions can be slow to warm; a scheduled "ping" (e.g. a cron hitting `/api/health`) keeps it warm
@@ -331,6 +334,7 @@ To deploy a preview (test branch): open a PR or push a branch — Vercel creates
 **Cause:** The frontend is up but can't talk to the API.
 
 **Fixes:**
+
 - Open the browser devtools Network tab and check the failing `/api/...` request
 - Confirm the backend URL is reachable from the browser (CORS)
 - Verify `credentials` and CORS origin are configured (the backend already sets `cors({ credentials: true, origin: ... })`)

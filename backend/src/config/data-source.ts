@@ -10,6 +10,12 @@ import { Session } from '../entities/Session';
 import { CandidateAssignment } from '../entities/CandidateAssignment';
 import { ActivityLog } from '../entities/ActivityLog';
 import { ScheduleMeta } from '../entities/ScheduleMeta';
+import { SchedulingConfig } from '../entities/SchedulingConfig';
+import { ReschedulingEntry } from '../entities/ReschedulingEntry';
+import { SchedulingRun } from '../entities/SchedulingRun';
+import { ScheduleConflict } from '../entities/ScheduleConflict';
+import { ScheduleHistory } from '../entities/ScheduleHistory';
+import { CustomCombination } from '../entities/CustomCombination';
 
 export const entities = [
   User,
@@ -21,6 +27,12 @@ export const entities = [
   CandidateAssignment,
   ActivityLog,
   ScheduleMeta,
+  SchedulingConfig,
+  ReschedulingEntry,
+  SchedulingRun,
+  ScheduleConflict,
+  ScheduleHistory,
+  CustomCombination,
 ];
 
 export const AppDataSource = new DataSource({
