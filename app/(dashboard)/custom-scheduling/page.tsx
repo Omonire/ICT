@@ -279,15 +279,15 @@ function CustomSchedulingContent() {
     if (!user) return;
 
     Promise.allSettled([
-      apiGet<{ data: CustomSubjectCombination[] }>(EP.combinations),
-      apiGet<{ data: string[] }>(EP.subjects),
-      apiGet<{ data: HallType[] }>('/api/halls'),
-      apiGet<{ data: Session[] }>('/api/sessions'),
-      apiGet<{ data: CustomSchedulingConfig }>(EP.activeConfig),
-      apiGet<{ data: CustomSchedulingConfig[] }>(EP.configs),
-      apiGet<{ data: SchedulingRun[] }>(EP.runs),
-      apiGet<{ data: ReschedulingEntry[] }>(EP.reschedulingQueue),
-      apiGet<{ data: ScheduleConflict[] }>(EP.conflicts),
+      apiGet<{ data: CustomSubjectCombination[] }>(EP.combinations, { timeoutMs: 120000 }),
+      apiGet<{ data: string[] }>(EP.subjects, { timeoutMs: 120000 }),
+      apiGet<{ data: HallType[] }>('/api/halls', { timeoutMs: 60000 }),
+      apiGet<{ data: Session[] }>('/api/sessions', { timeoutMs: 60000 }),
+      apiGet<{ data: CustomSchedulingConfig }>(EP.activeConfig, { timeoutMs: 60000 }),
+      apiGet<{ data: CustomSchedulingConfig[] }>(EP.configs, { timeoutMs: 60000 }),
+      apiGet<{ data: SchedulingRun[] }>(EP.runs, { timeoutMs: 120000 }),
+      apiGet<{ data: ReschedulingEntry[] }>(EP.reschedulingQueue, { timeoutMs: 120000 }),
+      apiGet<{ data: ScheduleConflict[] }>(EP.conflicts, { timeoutMs: 120000 }),
     ]).then(([comboRes, subjRes, hallRes, sessRes, configRes, configsRes, runsRes, queueRes, conflictRes]) => {
       if (comboRes.status === 'fulfilled') {
         setCombinations(comboRes.value.data);
@@ -328,7 +328,7 @@ function CustomSchedulingContent() {
     setLoadingAnalysis(true);
     setAnalysis(null);
     try {
-      const res = await apiGet<{ data: CustomCombinationAnalysis }>(`${EP.combinationAnalysis}/${encodeURIComponent(normalizedKey)}`);
+      const res = await apiGet<{ data: CustomCombinationAnalysis }>(`${EP.combinationAnalysis}/${encodeURIComponent(normalizedKey)}`, { timeoutMs: 120000 });
       setAnalysis(res.data);
     } catch (e) {
       error('Analysis unavailable', e instanceof Error ? e.message : 'Backend endpoint not ready');

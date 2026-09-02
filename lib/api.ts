@@ -19,7 +19,7 @@ interface RequestOptions extends Omit<RequestInit, 'body'> {
 }
 
 export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
-  const { body, timeoutMs = 30000, headers, ...rest } = options;
+  const { body, timeoutMs = 60000, headers, ...rest } = options;
 
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);

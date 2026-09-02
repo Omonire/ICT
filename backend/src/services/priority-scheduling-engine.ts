@@ -12,26 +12,24 @@
  */
 import { AppDataSource } from '../config/data-source';
 import { AppError } from '../utils/errors';
-import { Candidate, CandidateStatus } from '../entities/Candidate';
-import { CandidateAssignment } from '../entities/CandidateAssignment';
+import { CandidateStatus } from '../entities/Candidate';
 import { CareerGroup } from '../entities/CareerGroup';
 import { Hall } from '../entities/Hall';
 import { Session } from '../entities/Session';
 import { SchedulingConfig, SchedulingRules, DEFAULT_SCHEDULING_RULES, TieBreakerRule } from '../entities/SchedulingConfig';
 import { SchedulingRun, SchedulingRunStatus } from '../entities/SchedulingRun';
-import { ScheduleConflict, ConflictType, ConflictStatus } from '../entities/ScheduleConflict';
+import { ConflictType, ConflictStatus } from '../entities/ScheduleConflict';
 import { ScheduleHistory } from '../entities/ScheduleHistory';
-import { ReschedulingEntry, RescheduleReason, RescheduleStatus } from '../entities/ReschedulingEntry';
+import { RescheduleReason, RescheduleStatus } from '../entities/ReschedulingEntry';
 import { genUuid } from '../utils/ids';
 import { seatLabel } from './scheduler';
 import { normalizeSubjectCombination, displaySubjectCombination } from './scheduling-engine';
 import { logActivity } from './activity-log';
-import type { Repository } from 'typeorm';
 
 // ─── Types ─────────────────────────────────────────────────────────────────
 
 export interface PriorityCandidate {
-  candidate: Candidate;
+  candidate: CandidateRow;
   normalizedCombination: string;
   firstChoice: string;
 }
@@ -57,7 +55,7 @@ export interface ConflictDraft {
 export interface PrioritySchedulingResult {
   assignments: AssignmentDraft[];
   conflicts: ConflictDraft[];
-  overflow: Candidate[];
+  overflow: CandidateRow[];
   needsAttention: Array<{
     candidateId: string;
     candidateName: string;
@@ -234,7 +232,7 @@ export function performPriorityScheduling(
 ): PrioritySchedulingResult {
   const assignments: AssignmentDraft[] = [];
   const conflicts: ConflictDraft[] = [];
-  const overflow: Candidate[] = [];
+  const overflow: CandidateRow[] = [];
   const needsAttention: Array<{
     candidateId: string;
     candidateName: string;
@@ -493,12 +491,31 @@ function buildDayOutput(
 
 // ─── Data Loaders ──────────────────────────────────────────────────────────
 
-async function loadAllCandidates(repo: Repository<Candidate>): Promise<Candidate[]> {
-  const CHUNK = 5000;
-  let all: Candidate[] = [];
+/**
+ * Lightweight candidate row returned by raw SQL — avoids full TypeORM entity hydration.
+ */
+interface CandidateRow {
+  id: string;
+  name: string;
+  careerGroupId: string;
+  status: string;
+  jambSubjects: string[] | null;
+  firstChoice: string | null;
+}
+
+async function loadAllCandidates(ds: { query: (sql: string, params?: unknown[]) => Promise<unknown[]> }): Promise<CandidateRow[]> {
+  const CHUNK = 50_000;
+  let all: CandidateRow[] = [];
   let offset = 0;
   while (true) {
-    const batch = await repo.find({ skip: offset, take: CHUNK });
+    const batch = (await ds.query(
+      `SELECT id, name, career_group_id AS "careerGroupId", status, jamb_subjects AS "jambSubjects", first_choice AS "firstChoice"
+       FROM candidates
+       WHERE status != 'completed'
+       ORDER BY id
+       LIMIT $1 OFFSET $2`,
+      [CHUNK, offset]
+    )) as CandidateRow[];
     if (batch.length === 0) break;
     all = all.concat(batch);
     if (batch.length < CHUNK) break;
@@ -507,19 +524,27 @@ async function loadAllCandidates(repo: Repository<Candidate>): Promise<Candidate
   return all;
 }
 
-async function loadActiveHalls(repo: Repository<Hall>): Promise<Hall[]> {
-  const halls = await repo.find();
-  return halls.filter((h) => h.status === 'active');
+async function loadActiveHalls(ds: { query: (sql: string, params?: unknown[]) => Promise<unknown[]> }): Promise<Hall[]> {
+  const rows = (await ds.query(
+    `SELECT id, name, capacity FROM halls WHERE status = 'active' ORDER BY capacity DESC`
+  )) as { id: string; name: string; capacity: number }[];
+  return rows.map((r) => Object.assign(new Hall(), { id: r.id, name: r.name, capacity: r.capacity, status: 'active' }));
 }
 
-async function loadSessionsByIds(repo: Repository<Session>, ids: string[]): Promise<Session[]> {
-  if (ids.length === 0) return repo.find();
+async function loadSessionsByIds(ds: { query: (sql: string, params?: unknown[]) => Promise<unknown[]> }, ids: string[]): Promise<Session[]> {
+  if (ids.length === 0) {
+    const rows = (await ds.query(`SELECT id, name, exam_date, start_time, end_time FROM sessions ORDER BY exam_date, start_time`)) as any[];
+    return rows.map((r) => Object.assign(new Session(), { id: r.id, name: r.name, examDate: r.exam_date, startTime: r.start_time, endTime: r.end_time }));
+  }
   const CHUNK = 5000;
   let all: Session[] = [];
   for (let i = 0; i < ids.length; i += CHUNK) {
     const chunk = ids.slice(i, i + CHUNK);
-    const batch = await repo.find({ where: chunk.map((id) => ({ id })) });
-    all = all.concat(batch);
+    const rows = (await ds.query(
+      `SELECT id, name, exam_date, start_time, end_time FROM sessions WHERE id = ANY($1::varchar[])`,
+      [chunk]
+    )) as any[];
+    all = all.concat(rows.map((r) => Object.assign(new Session(), { id: r.id, name: r.name, examDate: r.exam_date, startTime: r.start_time, endTime: r.end_time })));
   }
   return all;
 }
@@ -540,14 +565,8 @@ export async function runPriorityScheduling(
 }> {
   const ds = AppDataSource;
   const configRepo = ds.getRepository(SchedulingConfig);
-  const candidateRepo = ds.getRepository(Candidate);
-  const hallRepo = ds.getRepository(Hall);
-  const sessionRepo = ds.getRepository(Session);
   const groupRepo = ds.getRepository(CareerGroup);
   const runRepo = ds.getRepository(SchedulingRun);
-  const assignmentRepo = ds.getRepository(CandidateAssignment);
-  const conflictRepo = ds.getRepository(ScheduleConflict);
-  const rescheduleRepo = ds.getRepository(ReschedulingEntry);
 
   // Load config
   let config: SchedulingConfig | null = null;
@@ -561,10 +580,10 @@ export async function runPriorityScheduling(
   const firstChoicePriority = config?.firstChoicePriority ?? null;
   const tieBreaker = config?.tieBreaker ?? null;
 
-  // Load data
-  const allCandidates = await loadAllCandidates(candidateRepo);
-  const halls = await loadActiveHalls(hallRepo);
-  const sessions = await loadSessionsByIds(sessionRepo, sessionIds);
+  // Load data — raw SQL for speed (avoids TypeORM entity hydration overhead)
+  const allCandidates = await loadAllCandidates(ds);
+  const halls = await loadActiveHalls(ds);
+  const sessions = await loadSessionsByIds(ds, sessionIds);
   const groups = await groupRepo.find();
   const groupMap = new Map(groups.map((g) => [g.id, g]));
 
@@ -643,69 +662,107 @@ export async function runPriorityScheduling(
     }
   }
 
-  // Update candidate statuses
+  // Update candidate statuses — bulk via temp table (avoids N individual UPDATEs)
   const sessionById = new Map(availableSessions.map((s) => [s.id, s]));
   const assignmentByCandidate = new Map(result.assignments.map((a) => [a.candidateId, a]));
 
-  for (const pc of sorted) {
-    const assignment = assignmentByCandidate.get(pc.candidate.id);
-    if (assignment) {
-      const session = sessionById.get(assignment.sessionId);
+  if (sorted.length > 0) {
+    await ds.query(`CREATE TEMPORARY TABLE _psu (
+      id VARCHAR PRIMARY KEY,
+      status VARCHAR,
+      assigned_hall_id VARCHAR,
+      assigned_seat_number VARCHAR,
+      assigned_session_id VARCHAR,
+      assigned_exam_date VARCHAR
+    ) ON COMMIT DROP`);
+
+    const CU_BATCH = 10_000;
+    for (let i = 0; i < sorted.length; i += CU_BATCH) {
+      const batch = sorted.slice(i, i + CU_BATCH);
+      const rows: string[] = [];
+      const params: unknown[] = [];
+      let pi = 1;
+      for (const pc of batch) {
+        const assignment = assignmentByCandidate.get(pc.candidate.id);
+        rows.push(`($${pi}, $${pi + 1}, $${pi + 2}, $${pi + 3}, $${pi + 4}, $${pi + 5})`);
+        params.push(
+          pc.candidate.id,
+          assignment ? CandidateStatus.SCHEDULED : CandidateStatus.UNSCHEDULED,
+          assignment?.hallId ?? null,
+          assignment?.seatNumber ?? null,
+          assignment?.sessionId ?? null,
+          assignment ? assignment.examDate : null,
+        );
+        pi += 6;
+      }
       await ds.query(
-        `UPDATE candidates SET
-          status = $1,
-          assigned_hall_id = $2,
-          assigned_seat_number = $3,
-          assigned_session_id = $4,
-          assigned_exam_date = $5
-        WHERE id = $6`,
-        [CandidateStatus.SCHEDULED, assignment.hallId, assignment.seatNumber, assignment.sessionId, assignment.examDate, pc.candidate.id]
-      );
-    } else {
-      await ds.query(
-        `UPDATE candidates SET status = $1 WHERE id = $2`,
-        [CandidateStatus.UNSCHEDULED, pc.candidate.id]
+        `INSERT INTO _psu (id, status, assigned_hall_id, assigned_seat_number, assigned_session_id, assigned_exam_date)
+         VALUES ${rows.join(',')}`,
+        params,
       );
     }
+
+    await ds.query(
+      `UPDATE candidates SET
+         status            = _psu.status,
+         assigned_hall_id  = _psu.assigned_hall_id,
+         assigned_seat_number = _psu.assigned_seat_number,
+         assigned_session_id  = _psu.assigned_session_id,
+         assigned_exam_date   = _psu.assigned_exam_date
+       FROM _psu WHERE candidates.id = _psu.id`,
+    );
+
+    await ds.query(`DROP TABLE IF EXISTS _psu`);
   }
 
-  // Persist conflicts
+  // Persist conflicts — bulk INSERT (avoids N individual saves)
   if (result.conflicts.length > 0) {
-    for (const c of result.conflicts) {
-      const conflict = conflictRepo.create({
-        id: genUuid(),
-        schedulingRunId: run.id,
-        candidateId: c.candidateId,
-        subjectCombination: null,
-        firstChoice: null,
-        conflictType: c.conflictType,
-        description: c.description,
-        assignedSessionId: c.assignedSessionId,
-        assignedHallId: c.assignedHallId,
-        assignedExamDate: c.assignedExamDate,
-        assignedSeatNumber: c.assignedSeatNumber,
-        status: ConflictStatus.OPEN,
-      });
-      await conflictRepo.save(conflict);
+    const CONFLICT_BATCH = 5000;
+    for (let i = 0; i < result.conflicts.length; i += CONFLICT_BATCH) {
+      const batch = result.conflicts.slice(i, i + CONFLICT_BATCH);
+      const rows: string[] = [];
+      const params: unknown[] = [];
+      let pi = 1;
+      for (const c of batch) {
+        rows.push(`($${pi}, $${pi + 1}, $${pi + 2}, $${pi + 3}, $${pi + 4}, $${pi + 5}, $${pi + 6}, $${pi + 7}, $${pi + 8}, $${pi + 9})`);
+        params.push(
+          genUuid(), run.id, c.candidateId, c.conflictType, c.description,
+          c.assignedSessionId, c.assignedHallId, c.assignedExamDate, c.assignedSeatNumber,
+          ConflictStatus.OPEN
+        );
+        pi += 10;
+      }
+      await ds.query(
+        `INSERT INTO schedule_conflicts (id, scheduling_run_id, candidate_id, conflict_type, description, assigned_session_id, assigned_hall_id, assigned_exam_date, assigned_seat_number, status)
+         VALUES ${rows.join(',')}`,
+        params,
+      );
     }
   }
 
-  // Persist overflow as rescheduling entries
-  const rescheduleEntries: ReschedulingEntry[] = [];
-  for (const candidate of result.overflow) {
-    const entry = rescheduleRepo.create({
-      id: genUuid(),
-      candidateId: candidate.id,
-      schedulingRunId: run.id,
-      subjectCombination: 'priority-based',
-      reason: RescheduleReason.CAPACITY_EXCEEDED,
-      status: RescheduleStatus.PENDING,
-      notes: 'Candidate could not be scheduled due to capacity constraints',
-    });
-    rescheduleEntries.push(entry);
-  }
-  if (rescheduleEntries.length > 0) {
-    await rescheduleRepo.save(rescheduleEntries);
+  // Persist overflow as rescheduling entries — bulk INSERT
+  if (result.overflow.length > 0) {
+    const RESCHEDULE_BATCH = 5000;
+    for (let i = 0; i < result.overflow.length; i += RESCHEDULE_BATCH) {
+      const batch = result.overflow.slice(i, i + RESCHEDULE_BATCH);
+      const rows: string[] = [];
+      const params: unknown[] = [];
+      let pi = 1;
+      for (const candidate of batch) {
+        rows.push(`($${pi}, $${pi + 1}, $${pi + 2}, $${pi + 3}, $${pi + 4}, $${pi + 5}, $${pi + 6})`);
+        params.push(
+          genUuid(), candidate.id, run.id, 'priority-based',
+          RescheduleReason.CAPACITY_EXCEEDED, RescheduleStatus.PENDING,
+          'Candidate could not be scheduled due to capacity constraints'
+        );
+        pi += 7;
+      }
+      await ds.query(
+        `INSERT INTO rescheduling_entries (id, candidate_id, scheduling_run_id, subject_combination, reason, status, notes)
+         VALUES ${rows.join(',')}`,
+        params,
+      );
+    }
   }
 
   // Update run record

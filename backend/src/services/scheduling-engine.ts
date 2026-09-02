@@ -1303,11 +1303,16 @@ import { Repository } from 'typeorm';
 async function loadAllCandidates(
   repo: Repository<Candidate>
 ): Promise<Candidate[]> {
-  const CHUNK = 5000;
+  // Select only the columns needed by the scheduler to cut hydration cost on huge tables.
+  const CHUNK = 20_000;
   let all: Candidate[] = [];
   let offset = 0;
   while (true) {
-    const batch = await repo.find({ skip: offset, take: CHUNK });
+    const batch = await repo.find({
+      select: ['id', 'name', 'careerGroupId', 'status', 'jambSubjects', 'firstChoice'],
+      skip: offset,
+      take: CHUNK,
+    });
     if (batch.length === 0) break;
     all = all.concat(batch);
     if (batch.length < CHUNK) break;
