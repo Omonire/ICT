@@ -45,9 +45,9 @@ export const AppDataSource = new DataSource({
   extra: {
     pool: {
       min: 0,
-      max: 3,
-      acquireTimeoutMillis: 10_000,
-      idleTimeoutMillis: 10_000,
+      max: 10,
+      acquireTimeoutMillis: 30_000,
+      idleTimeoutMillis: 30_000,
     },
   },
 });

@@ -344,29 +344,54 @@ function generateSeatNumber(
 
 // ─── Core Scheduling Engine ─────────────────────────────────────────────────
 
+export interface PreviewContext {
+  rules: SchedulingRules;
+  allCandidates: Candidate[];
+  sessions: Session[];
+  halls: Hall[];
+  scheduledCandidateIds: Set<string>;
+}
+
+/** Load the shared read-only data needed by a multi-combination preview. */
+export async function createPreviewContext(
+  sessionIds: string[],
+  configId?: string
+): Promise<PreviewContext> {
+  const rules = configId
+    ? (await getConfigById(configId))?.rules ?? DEFAULT_SCHEDULING_RULES
+    : await getActiveRules();
+  const candidateRepo = AppDataSource.getRepository(Candidate);
+  const sessionRepo = AppDataSource.getRepository(Session);
+  const hallRepo = AppDataSource.getRepository(Hall);
+  const assignmentRepo = AppDataSource.getRepository(CandidateAssignment);
+
+  const [allCandidates, sessions, halls, assignments] = await Promise.all([
+    loadAllCandidates(candidateRepo),
+    loadSessions(sessionRepo, sessionIds),
+    loadActiveHalls(hallRepo),
+    assignmentRepo.find({ select: ['candidateId'] }),
+  ]);
+
+  return {
+    rules,
+    allCandidates,
+    sessions,
+    halls,
+    scheduledCandidateIds: new Set(assignments.map((assignment) => assignment.candidateId)),
+  };
+}
+
 /**
  * Preview scheduling for a subject combination without persisting.
  */
 export async function previewScheduling(
   normalizedCombination: string,
   sessionIds: string[],
-  configId?: string
+  configId?: string,
+  sharedContext?: PreviewContext
 ): Promise<PreviewResult> {
-  const rules = configId
-    ? (await getConfigById(configId))?.rules ?? DEFAULT_SCHEDULING_RULES
-    : await getActiveRules();
-
-  // Load data
-  const candidateRepo = AppDataSource.getRepository(Candidate);
-  const sessionRepo = AppDataSource.getRepository(Session);
-  const hallRepo = AppDataSource.getRepository(Hall);
-  const groupRepo = AppDataSource.getRepository(CareerGroup);
-  const assignmentRepo = AppDataSource.getRepository(CandidateAssignment);
-
-  const allCandidates = await loadAllCandidates(candidateRepo);
-  const sessions = await loadSessions(sessionRepo, sessionIds);
-  const halls = await loadActiveHalls(hallRepo);
-  const groups = await groupRepo.find();
+  const context = sharedContext ?? (await createPreviewContext(sessionIds, configId));
+  const { rules, allCandidates, sessions, halls } = context;
 
   // Filter sessions by rules
   const availableSessions = filterSessionsByRules(sessions, rules);
@@ -378,11 +403,7 @@ export async function previewScheduling(
   );
 
   // Exclude already-scheduled candidates
-  const scheduledIds = await getAlreadyScheduledIds(
-    assignmentRepo,
-    combinationCandidates.map((c) => c.id),
-    availableSessions.map((s) => s.id)
-  );
+  const scheduledIds = context.scheduledCandidateIds;
   const unscheduledCandidates = combinationCandidates.filter(
     (c) => !scheduledIds.has(c.id)
   );
@@ -487,7 +508,6 @@ export async function generateScheduling(
   await qr.startTransaction();
 
   try {
-    // Load data within transaction
     const candidateRepo = qr.manager.getRepository(Candidate);
     const sessionRepo = qr.manager.getRepository(Session);
     const hallRepo = qr.manager.getRepository(Hall);
@@ -507,11 +527,10 @@ export async function generateScheduling(
       normalizedCombination
     );
 
-    // Exclude already-scheduled candidates
+    // Exclude already-scheduled candidates (one assignment per candidate, globally)
     const scheduledIds = await getAlreadyScheduledIds(
       assignmentRepo,
-      combinationCandidates.map((c) => c.id),
-      availableSessions.map((s) => s.id)
+      combinationCandidates.map((c) => c.id)
     );
     const unscheduledCandidates = combinationCandidates.filter(
       (c) => !scheduledIds.has(c.id)
@@ -536,12 +555,28 @@ export async function generateScheduling(
     await runRepo.save(run);
 
     // Perform the actual scheduling
+    const existingFillRows: { session_id: string; hall_id: string; cnt: string }[] =
+      availableSessions.length > 0
+        ? await qr.manager.query(
+            `SELECT session_id, hall_id, COUNT(*)::int AS cnt
+             FROM candidate_assignments
+             WHERE session_id = ANY($1::varchar[])
+             GROUP BY session_id, hall_id`,
+            [availableSessions.map((s) => s.id)]
+          )
+        : [];
+    const existingFill = new Map<string, number>();
+    for (const row of existingFillRows) {
+      existingFill.set(`${row.session_id}:${row.hall_id}`, Number(row.cnt));
+    }
+
     const result = performScheduling(
       unscheduledCandidates,
       availableSessions,
       halls,
       rules,
-      run.id
+      run.id,
+      existingFill
     );
 
     // Persist assignments
@@ -574,39 +609,54 @@ export async function generateScheduling(
       }
     }
 
-    // Update candidate statuses
+    // Update candidate statuses in bulk (avoids thousands of sequential UPDATEs)
     const sessionById = new Map(availableSessions.map((s) => [s.id, s]));
-    const assignmentByCandidate = new Map(
-      result.assignments.map((a) => [a.candidateId, a])
-    );
 
-    for (const candidate of unscheduledCandidates) {
-      const assignment = assignmentByCandidate.get(candidate.id);
-      if (assignment) {
-        const session = sessionById.get(assignment.sessionId)!;
+    if (result.assignments.length > 0) {
+      const UPDATE_BATCH = 5000;
+      await qr.manager.query(
+        `CREATE TEMPORARY TABLE _gen (
+          candidate_id VARCHAR, hall_id VARCHAR, seat_number VARCHAR, session_id VARCHAR, exam_date VARCHAR
+        ) ON COMMIT DROP`
+      );
+      for (let i = 0; i < result.assignments.length; i += UPDATE_BATCH) {
+        const batch = result.assignments.slice(i, i + UPDATE_BATCH);
+        const rows: string[] = [];
+        const params: unknown[] = [];
+        let pi = 1;
+        for (const a of batch) {
+          const session = sessionById.get(a.sessionId)!;
+          rows.push(`($${pi}, $${pi + 1}, $${pi + 2}, $${pi + 3}, $${pi + 4})`);
+          params.push(a.candidateId, a.hallId, a.seatNumber, a.sessionId, session.examDate);
+          pi += 5;
+        }
         await qr.manager.query(
-          `UPDATE candidates SET
-            status = $1,
-            assigned_hall_id = $2,
-            assigned_seat_number = $3,
-            assigned_session_id = $4,
-            assigned_exam_date = $5
-          WHERE id = $6`,
-          [
-            CandidateStatus.SCHEDULED,
-            assignment.hallId,
-            assignment.seatNumber,
-            assignment.sessionId,
-            session.examDate,
-            candidate.id,
-          ]
-        );
-      } else {
-        await qr.manager.query(
-          `UPDATE candidates SET status = $1 WHERE id = $2`,
-          [CandidateStatus.UNSCHEDULED, candidate.id]
+          `INSERT INTO _gen (candidate_id, hall_id, seat_number, session_id, exam_date) VALUES ${rows.join(',')}`,
+          params
         );
       }
+      await qr.manager.query(
+        `UPDATE candidates SET
+          status = $1,
+          assigned_hall_id = g.hall_id,
+          assigned_seat_number = g.seat_number,
+          assigned_session_id = g.session_id,
+          assigned_exam_date = g.exam_date
+        FROM _gen g WHERE candidates.id = g.candidate_id`,
+        [CandidateStatus.SCHEDULED]
+      );
+    }
+
+    // Candidates in this combination that were not assigned by this run
+    const assignedSet = new Set(result.assignments.map((a) => a.candidateId));
+    const unassignedIds = unscheduledCandidates
+      .filter((c) => !assignedSet.has(c.id))
+      .map((c) => c.id);
+    for (let i = 0; i < unassignedIds.length; i += 5000) {
+      await qr.manager.query(
+        `UPDATE candidates SET status = $1 WHERE id = ANY($2::varchar[])`,
+        [CandidateStatus.UNSCHEDULED, unassignedIds.slice(i, i + 5000)]
+      );
     }
 
     // Create rescheduling entries for overflow
@@ -1020,7 +1070,8 @@ function performScheduling(
   sessions: Session[],
   halls: Hall[],
   rules: SchedulingRules,
-  runId: string
+  runId: string,
+  existingFill?: Map<string, number>
 ): SchedulingOutput {
   const sortedSessions = filterSessionsByRules(sessions, rules);
 
@@ -1029,8 +1080,9 @@ function performScheduling(
     (a, b) => b.capacity - a.capacity || a.name.localeCompare(b.name)
   );
 
-  // Track fill levels per (sessionId, hallId)
-  const fillLevel = new Map<string, number>();
+  // Track fill levels per (sessionId, hallId). Seed from existing assignments
+  // so new runs continue numbering instead of reusing occupied seats.
+  const fillLevel = new Map(existingFill ?? []);
   const assignments: AssignmentDraft[] = [];
   const overflow: Candidate[] = [];
   const usedHallsThisDay = new Map<string, Set<string>>();
@@ -1292,22 +1344,20 @@ async function loadActiveHalls(
 
 async function getAlreadyScheduledIds(
   repo: Repository<CandidateAssignment>,
-  candidateIds: string[],
-  sessionIds: string[]
+  candidateIds: string[]
 ): Promise<Set<string>> {
   const result = new Set<string>();
-  if (candidateIds.length === 0 || sessionIds.length === 0) return result;
+  if (candidateIds.length === 0) return result;
 
   const CHUNK = 5000;
   for (let i = 0; i < candidateIds.length; i += CHUNK) {
     const chunk = candidateIds.slice(i, i + CHUNK);
     const assignments = await repo.find({
       where: chunk.map((id) => ({ candidateId: id })),
+      select: ['candidateId'],
     });
     for (const a of assignments) {
-      if (sessionIds.includes(a.sessionId)) {
-        result.add(a.candidateId);
-      }
+      result.add(a.candidateId);
     }
   }
   return result;

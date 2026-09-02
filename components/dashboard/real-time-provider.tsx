@@ -13,7 +13,7 @@ interface RealtimeContextValue {
 const RealtimeContext = createContext<RealtimeContextValue | null>(null);
 
 export function RealtimeProvider({ children }: { children: ReactNode }) {
-  const { connected, subscribe, unsubscribe } = useWebSocket();
+  const { connected, subscribe, unsubscribe } = useWebSocket('/ws');
   const [lastEvent, setLastEvent] = useState<{ event: string; data: unknown } | null>(null);
 
   const handleEvent = useCallback((event: string) => {

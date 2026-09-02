@@ -235,6 +235,7 @@ function CustomSchedulingContent() {
 
   // Section refs for auto-scroll
   const sectionRefs = {
+    2: useRef<HTMLDivElement>(null),
     3: useRef<HTMLDivElement>(null),
     4: useRef<HTMLDivElement>(null),
     5: useRef<HTMLDivElement>(null),
@@ -266,7 +267,7 @@ function CustomSchedulingContent() {
 
   // Auto-scroll to current step section whenever step changes
   useEffect(() => {
-    if (step >= 3) {
+    if (step >= 2) {
       scrollToStep(step);
     }
   }, [step]);
@@ -329,9 +330,7 @@ function CustomSchedulingContent() {
 
   // ─── Toggle combination selection ─────────────────────────────────────
   function toggleCombination(key: string) {
-    setSelectedKeys((prev) =>
-      prev.includes(key) ? prev.filter((k) => k !== key) : [...prev, key]
-    );
+    setSelectedKeys((prev) => (prev[0] === key ? [] : [key]));
   }
 
   // ─── Proceed with selected combinations ──────────────────────────────
@@ -395,7 +394,9 @@ function CustomSchedulingContent() {
     setPreview(null);
     try {
       const res = await apiPost<{ data: CustomSchedulingPreview }>(EP.preview, {
-        subjectCombinations: selectedKeys,
+        ...(selectedKeys.length === 1
+          ? { subjectCombination: selectedKeys[0] }
+          : { subjectCombinations: selectedKeys }),
         sessionIds: selectedSessionIds,
         configId,
       }, { timeoutMs: 120000 });
@@ -415,7 +416,9 @@ function CustomSchedulingContent() {
     setGenerating(true);
     try {
       const res = await apiPost<{ data: CustomScheduleResult }>(EP.generate, {
-        subjectCombinations: selectedKeys,
+        ...(selectedKeys.length === 1
+          ? { subjectCombination: selectedKeys[0] }
+          : { subjectCombinations: selectedKeys }),
         sessionIds: selectedSessionIds,
         configId,
       }, { timeoutMs: 180000 });
@@ -479,7 +482,7 @@ function CustomSchedulingContent() {
   // ─── Filtered results ──────────────────────────────────────────────────
   const filteredDays = useMemo(() => {
     if (!generateResult) return [];
-    let days = generateResult.days;
+    let days = generateResult.days ?? [];
     if (filterDay) {
       days = days.filter((d) => d.date === filterDay);
     }
@@ -488,7 +491,7 @@ function CustomSchedulingContent() {
 
   const uniqueResultDates = useMemo(() => {
     if (!generateResult) return [];
-    return [...new Set(generateResult.days.map((d) => d.date))];
+    return [...new Set((generateResult.days ?? []).map((d) => d.date))];
   }, [generateResult]);
 
   // ─── Render ─────────────────────────────────────────────────────────────
@@ -630,7 +633,7 @@ function CustomSchedulingContent() {
 
       {/* ─── Step 2: Candidate Analysis ───────────────────────────────── */}
       {selectedCombos.length > 0 && step >= 2 && (
-        <section className="space-y-4">
+        <section ref={sectionRefs[2]} className="space-y-4 animate-slide-in">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-[15px] font-semibold text-slate-900">Candidate analysis</h2>
@@ -658,7 +661,7 @@ function CustomSchedulingContent() {
                 <Stat label="Completed" value={analysis.statusBreakdown.completed.toLocaleString()} tone="slate" />
               </div>
 
-              {analysis.firstChoiceDistribution.length > 0 && (
+              {(analysis.firstChoiceDistribution ?? []).length > 0 && (
                 <Card>
                   <CardHeader>
                     <CardTitle className="text-[14px]">First-choice programme distribution</CardTitle>
@@ -837,7 +840,7 @@ function CustomSchedulingContent() {
                 </div>
 
                 {/* Day breakdown preview */}
-                {preview.days.length > 0 && (
+                {preview.days?.length > 0 && (
                   <div>
                     <h3 className="text-[13px] font-semibold text-slate-900 mb-3">Schedule breakdown</h3>
                     <div className="space-y-3">
@@ -914,7 +917,7 @@ function CustomSchedulingContent() {
             <div>
               <h2 className="text-[15px] font-semibold text-slate-900">Generated schedule</h2>
               <p className="text-[13px] text-slate-500">
-                {generateResult.displayName} · Run {generateResult.runId.slice(0, 8)}
+                {generateResult.displayName} · Run {generateResult.runId?.slice(0, 8) ?? '—'}
               </p>
             </div>
             <div className="flex items-center gap-2">
@@ -925,18 +928,18 @@ function CustomSchedulingContent() {
           </div>
 
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-            <Stat label="Scheduled" value={generateResult.scheduledCount.toLocaleString()} tone="green" icon={<CheckCircle2 className="h-4 w-4" />} />
-            <Stat label="Overflow" value={generateResult.overflowCount.toLocaleString()} tone={generateResult.overflowCount > 0 ? 'amber' : 'green'} />
-            <Stat label="Days" value={generateResult.dayCount} tone="purple" icon={<CalendarDays className="h-4 w-4" />} />
-            <Stat label="Total candidates" value={generateResult.candidateCount.toLocaleString()} tone="slate" />
+            <Stat label="Scheduled" value={(generateResult.scheduledCount ?? 0).toLocaleString()} tone="green" icon={<CheckCircle2 className="h-4 w-4" />} />
+            <Stat label="Overflow" value={(generateResult.overflowCount ?? 0).toLocaleString()} tone={(generateResult.overflowCount ?? 0) > 0 ? 'amber' : 'green'} />
+            <Stat label="Days" value={generateResult.dayCount ?? 0} tone="purple" icon={<CalendarDays className="h-4 w-4" />} />
+            <Stat label="Total candidates" value={(generateResult.candidateCount ?? 0).toLocaleString()} tone="slate" />
           </div>
 
           {/* Overflow message */}
-          {generateResult.overflowCount > 0 && (
+          {(generateResult.overflowCount ?? 0) > 0 && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800 flex items-start gap-3">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
               <div>
-                <p className="font-medium">Rescheduling required for {generateResult.overflowCount} candidate(s)</p>
+                <p className="font-medium">Rescheduling required for {generateResult.overflowCount ?? 0} candidate(s)</p>
                 <p className="mt-1">These candidates could not be scheduled due to capacity constraints. They appear in the rescheduling queue below.</p>
               </div>
             </div>

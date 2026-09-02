@@ -15,6 +15,7 @@ import {
   analyzeSubjectCombinations,
   calculateFirstChoiceDistribution,
   previewScheduling,
+  createPreviewContext,
   generateScheduling,
   regenerateDay,
   regenerateSession,
@@ -297,7 +298,7 @@ export const approve = asyncHandler(async (req: Request, res: Response) => {
         const sessIds = [...new Set(toKeep.map((a) => a.sessionId))];
         if (sessIds.length > 0) {
           for (let i = 0; i < sessIds.length; i += BATCH) {
-            const rows = await qr.query(`SELECT id, exam_date FROM session WHERE id = ANY($1::varchar[])`, [sessIds.slice(i, i + BATCH)]);
+            const rows = await qr.query(`SELECT id, exam_date FROM sessions WHERE id = ANY($1::varchar[])`, [sessIds.slice(i, i + BATCH)]);
             for (const r of rows) sessionById.set(r.id, { examDate: r.exam_date });
           }
         }
@@ -355,7 +356,7 @@ export const approve = asyncHandler(async (req: Request, res: Response) => {
       for (let offset = 0; offset < count; offset += BATCH) {
         const rows = await qr.query(
           `SELECT a.candidate_id, a.hall_id, a.seat_number, a.session_id, s.exam_date
-           FROM candidate_assignments a JOIN session s ON s.id = a.session_id
+           FROM candidate_assignments a JOIN sessions s ON s.id = a.session_id
            ORDER BY a.candidate_id LIMIT $1 OFFSET $2`,
           [BATCH, offset]
         );
@@ -623,29 +624,53 @@ export const previewNew = asyncHandler(async (req: Request, res: Response) => {
   const combos = subjectCombinations || (subjectCombination ? [subjectCombination] : []);
   if (combos.length === 0) throw AppError.badRequest('Select at least one subject combination');
 
+  const context = await createPreviewContext(sessionIds, configId);
   const BATCH_SIZE = 5;
   let totalCandidates = 0;
+  let totalScheduled = 0;
+  let totalOverflow = 0;
+  let totalCannotSchedule = 0;
   let totalDays = 0;
   let lastResult: any = null;
 
   for (let i = 0; i < combos.length; i += BATCH_SIZE) {
     const batch = combos.slice(i, i + BATCH_SIZE);
     const results = await Promise.all(
-      batch.map((combo) => previewScheduling(combo, sessionIds, configId))
+      batch.map((combo) => previewScheduling(combo, sessionIds, configId, context))
     );
     for (const result of results) {
       totalCandidates += result.candidateCount;
+      totalScheduled += result.candidatesScheduled;
+      totalOverflow += result.candidatesOverflow;
+      totalCannotSchedule += result.candidatesCannotSchedule;
       totalDays = Math.max(totalDays, result.estimatedDays);
       lastResult = result;
     }
   }
 
-  res.json({ data: {
-    candidateCount: totalCandidates,
-    estimatedDays: totalDays,
-    sessionCount: sessionIds.length,
-    ...(lastResult || {}),
-  }});
+  // Keep the last combo's full shape (days, sessions, halls) for the UI, but let
+  // the aggregated totals win so multi-combination previews report correct counts.
+  res.json({
+    data: lastResult
+      ? {
+          ...lastResult,
+          candidateCount: totalCandidates,
+          candidatesScheduled: totalScheduled,
+          candidatesOverflow: totalOverflow,
+          candidatesCannotSchedule: totalCannotSchedule,
+          estimatedDays: totalDays,
+          sessionCount: sessionIds.length,
+        }
+      : {
+          candidateCount: totalCandidates,
+          candidatesScheduled: totalScheduled,
+          candidatesOverflow: totalOverflow,
+          candidatesCannotSchedule: totalCannotSchedule,
+          estimatedDays: totalDays,
+          sessionCount: sessionIds.length,
+          days: [],
+        },
+  });
 });
 
 /**
