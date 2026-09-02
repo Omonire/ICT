@@ -3,6 +3,7 @@
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
+  AlertCircle,
   AlertTriangle,
   CalendarDays,
   CheckCircle2,
@@ -199,6 +200,7 @@ function CustomSchedulingContent() {
 
   // Data
   const [combinations, setCombinations] = useState<CustomSubjectCombination[] | null>(null);
+  const [combinationsError, setCombinationsError] = useState<string | null>(null);
   const [subjects, setSubjects] = useState<string[]>([]);
   const [analysis, setAnalysis] = useState<CustomCombinationAnalysis | null>(null);
   const [halls, setHalls] = useState<HallType[]>([]);
@@ -287,8 +289,15 @@ function CustomSchedulingContent() {
       apiGet<{ data: ReschedulingEntry[] }>(EP.reschedulingQueue),
       apiGet<{ data: ScheduleConflict[] }>(EP.conflicts),
     ]).then(([comboRes, subjRes, hallRes, sessRes, configRes, configsRes, runsRes, queueRes, conflictRes]) => {
-      if (comboRes.status === 'fulfilled') setCombinations(comboRes.value.data);
-      else setCombinations([]);
+      if (comboRes.status === 'fulfilled') {
+        setCombinations(comboRes.value.data);
+        setCombinationsError(null);
+      } else {
+        setCombinations([]);
+        setCombinationsError(
+          comboRes.reason instanceof Error ? comboRes.reason.message : 'Request failed'
+        );
+      }
       if (subjRes.status === 'fulfilled') setSubjects(subjRes.value.data);
       else setSubjects([]);
       if (hallRes.status === 'fulfilled') setHalls(hallRes.value.data);
@@ -525,6 +534,12 @@ function CustomSchedulingContent() {
           <CardContent>
             {loadingCombinations ? (
               <SkeletonCards count={4} />
+            ) : combinationsError ? (
+              <EmptyState
+                icon={<AlertCircle className="h-5 w-5" />}
+                title="Could not load subject combinations"
+                description={`${combinationsError} — check that the backend API is running and the candidate data has JAMB subject columns.`}
+              />
             ) : combinations === null || combinations.length === 0 ? (
               <EmptyState
                 icon={<Users className="h-5 w-5" />}

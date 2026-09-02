@@ -12,7 +12,7 @@ import { CandidateAssignment } from '../entities/CandidateAssignment';
 import { ActivityLog } from '../entities/ActivityLog';
 import { ScheduleMeta } from '../entities/ScheduleMeta';
 import { setMaintenanceMode } from '../middleware/maintenance';
-import { runSeed } from '../services/seeding';
+import { runSeed, backfillJambSubjects } from '../services/seeding';
 import { AppError, asyncHandler as wrap } from '../utils/errors';
 import { createUserSchema, seedForSessionSchema } from '../schemas';
 import { validateBody } from '../middleware/validate';
@@ -58,6 +58,30 @@ router.post(
   wrap(async (_req, res) => {
     const result = await runSeed();
     res.json(result);
+  })
+);
+
+// ─── Backfill missing JAMB subject data ──────────────────────────────────────
+// Repair for databases whose candidates were imported without JAMB subject
+// columns: fills jamb_subjects (and first_choice) from the Excel source by
+// matching matricNo/email/name. Only touches rows with empty jamb_subjects.
+router.post(
+  '/backfill-jamb-subjects',
+  superadminOnly,
+  wrap(async (req, res) => {
+    const { limit } = (req.body ?? {}) as { limit?: number };
+    const result = await backfillJambSubjects(
+      typeof limit === 'number' ? { limit } : {}
+    );
+    res.json({
+      message:
+        result.updated > 0
+          ? `Backfilled JAMB subjects for ${result.updated} candidate(s).`
+          : result.total === 0
+            ? 'No candidates are missing JAMB subject data.'
+            : 'Could not match missing candidates to the Excel source.',
+      ...result,
+    });
   })
 );
 

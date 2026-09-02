@@ -63,9 +63,145 @@ function buildSessions(): Array<{ name: string; examDate: string; startTime: str
   return sessions;
 }
 
-async function isSeeded(ds: typeof AppDataSource): Promise<boolean> {
-  const count = await ds.getRepository(Candidate).count();
-  return count > 0;
+/** Find the real Excel candidate source file wherever it was deployed/stored. */
+async function locateExcelFile(): Promise<string> {
+  const excelFileName = 'Exam_Schedulling_4_Python_1.xls';
+  const possiblePaths = [
+    path.join(__dirname, '../../public', excelFileName), // Vercel
+    path.join(__dirname, '../../data', excelFileName),   // Local dev
+    path.join(__dirname, '../../../public', excelFileName), // Alternative Vercel path
+    path.join(__dirname, '../../../data', excelFileName),   // Alternative local path
+  ];
+
+  const fs = await import('fs');
+  for (const candidatePath of possiblePaths) {
+    try {
+      if (fs.existsSync(candidatePath)) return candidatePath;
+    } catch {
+      continue;
+    }
+  }
+  throw new Error(
+    `Excel candidate source not found in any expected location: ${possiblePaths.join(', ')}`
+  );
+}
+
+/**
+ * Backfill JAMB subject data for candidate rows that are missing it (e.g. a
+ * database seeded by an older import that predates the JAMB columns).
+ *
+ * Matches candidates against the real Excel candidate source by matricNo/email/
+ * name and fills jamb_subjects first_choice. Only rows with empty jamb_subjects
+ * are touched; status, career group and assignments are left untouched.
+ */
+export async function backfillJambSubjects(
+  options: { limit?: number } = {}
+): Promise<{ total: number; updated: number; unmatched: number }> {
+  const ds = AppDataSource;
+  if (!ds.isInitialized) await initDatabase();
+
+  const excelFilePath = await locateExcelFile();
+  const groups = await ds.getRepository(CareerGroup).find();
+  const excelRows = parseExcelCandidates(excelFilePath);
+  const candidateData = generateExcelCandidates(excelRows, groups);
+
+  const byEmail = new Map<string, Partial<Candidate>>();
+  const byMatric = new Map<string, Partial<Candidate>>();
+  const byName = new Map<string, Partial<Candidate>>();
+  for (const data of candidateData) {
+    if (!data.jambSubjects || data.jambSubjects.length === 0) continue;
+    if (data.email) byEmail.set(data.email.toLowerCase(), data);
+    if (data.matricNo) byMatric.set(String(data.matricNo).toLowerCase(), data);
+    if (data.name) byName.set(String(data.name).toLowerCase(), data);
+  }
+
+  // All rows missing JAMB subjects — even on a healthy DB this is one cheap query.
+  const missing = await ds.query(
+    `SELECT id, name, email, "matricNo"
+     FROM candidates
+     WHERE jamb_subjects IS NULL OR jsonb_array_length(jamb_subjects) = 0
+     ORDER BY id`
+  );
+  const total = missing.length;
+  const missingRows: Array<{
+    id: string;
+    name: string;
+    email: string | null;
+    matricNo: string | null;
+  }> =
+    typeof options.limit === 'number' && options.limit > 0
+      ? missing.slice(0, options.limit)
+      : missing;
+
+  if (missingRows.length === 0) {
+    return { total: 0, updated: 0, unmatched: 0 };
+  }
+
+  const toFill: Array<{ id: string; jambSubjects: string[]; firstChoice: string | null }> = [];
+  let unmatched = 0;
+  for (const candidate of missingRows) {
+    const key = String(candidate.email ?? '').toLowerCase();
+    const source: Partial<Candidate> | undefined =
+      (key ? byEmail.get(key) : undefined) ||
+      (candidate.matricNo
+        ? byMatric.get(String(candidate.matricNo).toLowerCase())
+        : undefined) ||
+      (candidate.name ? byName.get(String(candidate.name).toLowerCase()) : undefined);
+    if (!source?.jambSubjects) {
+      unmatched += 1;
+      continue;
+    }
+    toFill.push({
+      id: candidate.id,
+      jambSubjects: source.jambSubjects,
+      firstChoice: source.firstChoice ?? null,
+    });
+  }
+
+  if (toFill.length === 0) {
+    return { total, updated: 0, unmatched };
+  }
+
+  const qr = ds.createQueryRunner();
+  await qr.connect();
+  await qr.startTransaction();
+  try {
+    await qr.query(
+      `CREATE TEMPORARY TABLE _bf (id VARCHAR PRIMARY KEY, jamb_subjects JSONB, first_choice VARCHAR) ON COMMIT DROP`
+    );
+    const BATCH = 5000;
+    for (let i = 0; i < toFill.length; i += BATCH) {
+      const chunk = toFill.slice(i, i + BATCH);
+      const rows: string[] = [];
+      const params: unknown[] = [];
+      let pi = 1;
+      for (const item of chunk) {
+        rows.push(`($${pi}, $${pi + 1}::jsonb, $${pi + 2})`);
+        params.push(item.id, JSON.stringify(item.jambSubjects), item.firstChoice);
+        pi += 3;
+      }
+      await qr.query(
+        `INSERT INTO _bf (id, jamb_subjects, first_choice) VALUES ${rows.join(',')}`,
+        params
+      );
+    }
+
+    const result = await qr.query(
+      `UPDATE candidates c
+       SET jamb_subjects = b.jamb_subjects,
+           first_choice  = COALESCE(c.first_choice, b.first_choice)
+       FROM _bf b
+       WHERE c.id = b.id`
+    );
+    await qr.query(`DROP TABLE IF EXISTS _bf`);
+    await qr.commitTransaction();
+    return { total, updated: Number(result?.rowCount ?? toFill.length), unmatched };
+  } catch (err) {
+    await qr.rollbackTransaction();
+    throw err;
+  } finally {
+    await qr.release();
+  }
 }
 
 export async function runSeed(): Promise<{ candidateCount: number; message: string }> {
@@ -87,9 +223,23 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
     await userRepo.save(sa);
   }
 
-  if (await isSeeded(ds)) {
+  const candidateCount = await ds.getRepository(Candidate).count();
+  if (candidateCount > 0) {
+    const missingCount = (
+      await ds.query(
+        `SELECT count(*)::int AS n FROM candidates
+         WHERE jamb_subjects IS NULL OR jsonb_array_length(jamb_subjects) = 0`
+      )
+    )[0].n as number;
+    if (missingCount > 0) {
+      const repair = await backfillJambSubjects();
+      return {
+        candidateCount,
+        message: `Candidates exist but ${repair.updated} were missing JAMB subject data — repaired (${repair.unmatched} unmatched). Skipping full seed.`,
+      };
+    }
     return {
-      candidateCount: await ds.getRepository(Candidate).count(),
+      candidateCount,
       message: 'Database already contains data — skipping seed.',
     };
   }
@@ -179,37 +329,10 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
 
   const candidateRepo = ds.getRepository(Candidate);
   
-  // Load candidates from Excel file (try multiple paths)
+  // Load candidates from the real Excel candidate source
   let candidates: Candidate[] = [];
   try {
-    // Try to find Excel file in these locations (in order):
-    // 1. public/ (Vercel deployment)
-    // 2. backend/data/ (local development)
-    const excelFileName = 'Exam_Schedulling_4_Python_1.xls';
-    const possiblePaths = [
-      path.join(__dirname, '../../public', excelFileName), // Vercel
-      path.join(__dirname, '../../data', excelFileName),   // Local dev
-      path.join(__dirname, '../../../public', excelFileName), // Alternative Vercel path
-      path.join(__dirname, '../../../data', excelFileName),   // Alternative local path
-    ];
-    
-    let excelFilePath: string | null = null;
-    const fs = await import('fs');
-    for (const candidatePath of possiblePaths) {
-      try {
-        if (fs.existsSync(candidatePath)) {
-          excelFilePath = candidatePath;
-          break;
-        }
-      } catch {
-        continue;
-      }
-    }
-    
-    if (!excelFilePath) {
-      throw new Error(`Excel file not found in any expected location: ${possiblePaths.join(', ')}`);
-    }
-    
+    const excelFilePath = await locateExcelFile();
     console.log(`✓ Found Excel file at: ${excelFilePath}`);
     const excelRows = parseExcelCandidates(excelFilePath);
     const candidateData = generateExcelCandidates(excelRows, groups);
