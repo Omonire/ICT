@@ -18,7 +18,7 @@ import {
   Settings2,
   Users,
 } from 'lucide-react';
-import { apiGet, apiPost } from '@/lib/api';
+import { ApiRequestError, apiGet, apiPost } from '@/lib/api';
 import type {
   CustomCombinationAnalysis,
   CustomDaySchedule,
@@ -208,6 +208,7 @@ function CustomSchedulingContent() {
   const [activeConfig, setActiveConfig] = useState<CustomSchedulingConfig | null>(null);
   const [configs, setConfigs] = useState<CustomSchedulingConfig[]>([]);
   const [preview, setPreview] = useState<CustomSchedulingPreview | null>(null);
+  const [previewError, setPreviewError] = useState<string | null>(null);
   const [generateResult, setGenerateResult] = useState<CustomScheduleResult | null>(null);
   const [runs, setRuns] = useState<SchedulingRun[]>([]);
   const [queue, setQueue] = useState<ReschedulingEntry[]>([]);
@@ -222,6 +223,7 @@ function CustomSchedulingContent() {
   const [loadingAnalysis, setLoadingAnalysis] = useState(false);
   const [loadingPreview, setLoadingPreview] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generateError, setGenerateError] = useState<string | null>(null);
   const [regenerating, setRegenerating] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [regenConfirm, setRegenConfirm] = useState<{ type: 'day' | 'session'; label: string; payload: Record<string, string> } | null>(null);
@@ -401,6 +403,7 @@ function CustomSchedulingContent() {
     }
     setLoadingPreview(true);
     setPreview(null);
+    setPreviewError(null);
     try {
       const res = await apiPost<{ data: CustomSchedulingPreview }>(EP.preview, {
         ...(selectedKeys.length === 1
@@ -408,12 +411,14 @@ function CustomSchedulingContent() {
           : { subjectCombinations: selectedKeys }),
         sessionIds: selectedSessionIds,
         configId,
-      }, { timeoutMs: 120000 });
+      }, { timeoutMs: 180000 });
       setPreview(res.data);
       navigateStep(4);
       scrollToStep(4);
     } catch (e) {
-      error('Preview failed', e instanceof Error ? e.message : 'The backend preview endpoint returned an error.');
+      const msg = e instanceof Error ? e.message : 'The backend preview endpoint returned an error.';
+      setPreviewError(msg);
+      error('Preview failed', msg);
     } finally {
       setLoadingPreview(false);
     }
@@ -423,19 +428,38 @@ function CustomSchedulingContent() {
   async function generateSchedule() {
     if (selectedKeys.length === 0 || selectedSessionIds.length === 0) return;
     setGenerating(true);
+    setGenerateError(null);
+    // Capture existing runs so polling only counts the runs created by THIS job.
+    let preexisting = new Set<string>();
     try {
-      const res = await apiPost<{ data: CustomScheduleResult }>(EP.generate, {
-        ...(selectedKeys.length === 1
-          ? { subjectCombination: selectedKeys[0] }
-          : { subjectCombinations: selectedKeys }),
-        sessionIds: selectedSessionIds,
-        configId,
-      }, { timeoutMs: 180000 });
-      setGenerateResult(res.data);
+      const pre = await apiGet<{ data: SchedulingRun[] }>(EP.runs, { timeoutMs: 20 * 1000 });
+      preexisting = new Set((pre.data ?? []).map((r) => r.id));
+    } catch {
+      /* ignore — polling below is still safe */
+    }
+    try {
+      // The backend starts generation in the background and responds immediately
+      // (avoids the web proxy cutting off long synchronous jobs mid-write). We
+      // then poll the runs list until every selected combination has finished.
+      await apiPost<{ data: { jobId: string; comboCount: number; started: boolean } }>(
+        EP.generate,
+        {
+          ...(selectedKeys.length === 1
+            ? { subjectCombination: selectedKeys[0] }
+            : { subjectCombinations: selectedKeys }),
+          sessionIds: selectedSessionIds,
+          configId,
+        },
+        { timeoutMs: 30 * 1000 }
+      );
+
+      const wanted = new Set(selectedKeys);
+      const result = await waitForGeneration(wanted, preexisting, 10 * 60 * 1000);
+      setGenerateResult(result);
       setConfirmOpen(false);
       navigateStep(5);
       scrollToStep(5);
-      success('Schedule generated', `${res.data.scheduledCount} candidates scheduled across ${res.data.dayCount} day(s).`);
+      success('Schedule generated', `${result.scheduledCount ?? 0} candidates scheduled across ${result.dayCount ?? 0} day(s).`);
 
       // Refresh runs and queue
       const [runsRes, queueRes] = await Promise.allSettled([
@@ -445,10 +469,69 @@ function CustomSchedulingContent() {
       if (runsRes.status === 'fulfilled') setRuns(runsRes.value.data);
       if (queueRes.status === 'fulfilled') setQueue(queueRes.value.data);
     } catch (e) {
-      error('Generation failed', e instanceof Error ? e.message : 'The backend generation endpoint returned an error.');
+      const msg = e instanceof Error ? e.message : 'The backend generation endpoint returned an error.';
+      const isTimeout = e instanceof ApiRequestError && e.status === 408;
+      setGenerateError(
+        isTimeout
+          ? 'Generation is taking longer than expected. The schedule may still be processing on the server — wait a moment and refresh the page before retrying.'
+          : `Generation failed: ${msg}`
+      );
+      error(isTimeout ? 'Generation still in progress' : 'Generation failed', msg);
     } finally {
       setGenerating(false);
     }
+  }
+
+  /** Poll the runs endpoint until all requested combinations have finished. */
+  async function waitForGeneration(wanted: Set<string>, preexisting: Set<string>, deadlineMs: number): Promise<CustomScheduleResult> {
+    const started = Date.now();
+    let lastRuns: SchedulingRun[] = [];
+    let doneAll = false;
+
+    while (Date.now() - started < deadlineMs) {
+      await new Promise((r) => setTimeout(r, 2000));
+      const runsRes = await apiGet<{ data: SchedulingRun[] }>(EP.runs, { timeoutMs: 20 * 1000 });
+      lastRuns = runsRes.data ?? [];
+
+      const newFinished = lastRuns.filter(
+        (r) => !preexisting.has(r.id) && wanted.has(r.subjectCombination) && r.status !== 'generating'
+      );
+      const covered = new Set(newFinished.map((r) => r.subjectCombination));
+
+      let allCovered = true;
+      for (const key of wanted) {
+        if (!covered.has(key)) { allCovered = false; break; }
+      }
+      if (allCovered && newFinished.length >= wanted.size) { doneAll = true; break; }
+    }
+
+    if (!doneAll) {
+      throw new ApiRequestError(
+        408,
+        'TIMEOUT',
+        'Generation is taking longer than expected. The schedule may still be processing on the server — wait a moment and refresh the page before retrying.'
+      );
+    }
+
+    const ourRuns = lastRuns.filter((r) => !preexisting.has(r.id) && wanted.has(r.subjectCombination));
+    const scheduledCount = ourRuns.reduce((s, r) => s + (r.scheduledCount ?? 0), 0);
+    const overflowCount = ourRuns.reduce((s, r) => s + (r.overflowCount ?? 0), 0);
+    const candidateCount = ourRuns.reduce((s, r) => s + (r.candidateCount ?? 0), 0);
+    const dayCount = Math.max(0, ...ourRuns.map((r) => r.dayCount ?? 0));
+    const newest = ourRuns[0];
+
+    return {
+      runId: newest?.id ?? '',
+      subjectCombination: wanted.size === 1 ? [...wanted][0] : [...wanted].join('|'),
+      displayName: wanted.size === 1 ? `1 combination` : `${wanted.size} combinations`,
+      candidateCount,
+      scheduledCount,
+      overflowCount,
+      unschedulableCount: Math.max(0, candidateCount - scheduledCount - overflowCount),
+      dayCount,
+      days: [],
+      summary: { scheduled: scheduledCount, overflow: overflowCount, days: dayCount },
+    };
   }
 
   // ─── Regenerate ─────────────────────────────────────────────────────────
@@ -839,6 +922,21 @@ function CustomSchedulingContent() {
               <div className="mt-6">
                 <AirplaneLoader label="Computing preview…" />
               </div>
+            ) : previewError ? (
+              <div className="mt-5 space-y-4">
+                <div className="flex items-start gap-3 rounded-lg border border-red-200 bg-red-50 p-4 text-[13px] text-red-700">
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <div className="flex-1">
+                    <p className="font-medium">Preview could not be generated</p>
+                    <p className="mt-1">{previewError}</p>
+                  </div>
+                </div>
+                <div className="flex justify-end">
+                  <Button onClick={() => void loadPreview()} disabled={loadingPreview || selectedSessionIds.length === 0}>
+                    <RefreshCw className="h-4 w-4 mr-1.5" /> Retry preview
+                  </Button>
+                </div>
+              </div>
             ) : preview ? (
               <div className="mt-5 space-y-5">
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -921,6 +1019,33 @@ function CustomSchedulingContent() {
         <Card>
           <CardContent className="py-8">
             <AirplaneLoader label="Generating schedule…" />
+            <p className="mt-3 text-center text-[12px] text-slate-500">
+              This can take a while for large batches. Keep this tab open — you'll be notified when it finishes.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      {generateError && !generating && (
+        <Card>
+          <CardContent className="py-4">
+            <div className="flex flex-wrap items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-800">
+              <AlertTriangle className="h-5 w-5 shrink-0" />
+              <div className="min-w-0 flex-1">
+                <p className="font-medium">Generation did not complete</p>
+                <p className="mt-1">{generateError}</p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  setGenerateError(null);
+                  void generateSchedule();
+                }}
+              >
+                <RefreshCw className="h-3.5 w-3.5 mr-1.5" /> Retry
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}

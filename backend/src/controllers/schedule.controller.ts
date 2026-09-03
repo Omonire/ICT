@@ -676,6 +676,12 @@ export const previewNew = asyncHandler(async (req: Request, res: Response) => {
 /**
  * POST /api/schedule/generate-new
  * Generate and persist scheduling for one or more subject combinations.
+ *
+ * Long generation jobs can exceed the web/proxy connection lifetime, which
+ * previously surfaced as a bare 500 to the client even though every per-combo
+ * run was committed successfully. We now start the work in the background and
+ * respond immediately with a job token; the frontend polls GET /schedule/runs
+ * until the expected number of runs have finished.
  */
 export const generateNew = asyncHandler(async (req: Request, res: Response) => {
   const { subjectCombination, subjectCombinations, sessionIds, configId } = req.body as {
@@ -687,46 +693,73 @@ export const generateNew = asyncHandler(async (req: Request, res: Response) => {
 
   const combos = subjectCombinations || (subjectCombination ? [subjectCombination] : []);
   if (combos.length === 0) throw AppError.badRequest('Select at least one subject combination');
+  if (!sessionIds || sessionIds.length === 0)
+    throw AppError.badRequest('Select at least one session');
 
+  const jobId = genUuid();
+  const userId = req.user?.id ?? null;
+
+  // Dispatch generation in the background so the HTTP request returns quickly.
+  // Each combo runs in its own transaction and is committed independently, so
+  // a late failure never loses the earlier combos' work.
+  runGenerationBackground(jobId, combos, sessionIds, configId, userId).catch((err) => {
+    console.error(`[background-generate] job ${jobId} fatal:`, err);
+  });
+
+  res.json({
+    data: {
+      jobId,
+      comboCount: combos.length,
+      started: true,
+      message: `Generation started for ${combos.length} combination(s). Poll runs to track progress.`,
+    },
+  });
+});
+
+/** Run a generation job in the background, isolated from the request lifecycle. */
+async function runGenerationBackground(
+  jobId: string,
+  combos: string[],
+  sessionIds: string[],
+  configId: string | undefined,
+  userId: string | null
+): Promise<void> {
   let totalScheduled = 0;
   let totalOverflow = 0;
   let totalDays = 0;
   const runIds: string[] = [];
+  let failed = 0;
 
   for (const combo of combos) {
-    const result = await generateScheduling(
-      combo,
-      sessionIds,
-      req.user?.id ?? null,
-      configId
-    );
-    totalScheduled += result.scheduledCount;
-    totalOverflow += result.overflowCount;
-    totalDays = Math.max(totalDays, result.dayCount);
-    runIds.push(result.runId);
+    try {
+      const result = await generateScheduling(combo, sessionIds, userId, configId);
+      totalScheduled += result.scheduledCount;
+      totalOverflow += result.overflowCount;
+      totalDays = Math.max(totalDays, result.dayCount);
+      runIds.push(result.runId);
 
-    await logActivity({
-      action: 'schedule.engine.generated',
-      userId: req.user?.id ?? null,
-      entityType: 'scheduling_run',
-      entityId: result.runId,
-      details: {
-        subjectCombination: result.displayName,
-        scheduledCount: result.scheduledCount,
-        overflowCount: result.overflowCount,
-        dayCount: result.dayCount,
-      },
-    });
+      await logActivity({
+        action: 'schedule.engine.generated',
+        userId,
+        entityType: 'scheduling_run',
+        entityId: result.runId,
+        details: {
+          subjectCombination: result.displayName,
+          scheduledCount: result.scheduledCount,
+          overflowCount: result.overflowCount,
+          dayCount: result.dayCount,
+        },
+      });
+    } catch (err) {
+      failed++;
+      console.error(`[background-generate] job ${jobId} combo "${combo}" failed:`, err);
+    }
   }
 
-  res.json({ data: {
-    scheduledCount: totalScheduled,
-    overflowCount: totalOverflow,
-    dayCount: totalDays,
-    runId: runIds.length === 1 ? runIds[0] : runIds.join(','),
-    displayName: combos.length === 1 ? `${combos.length} combination` : `${combos.length} combinations`,
-  }});
-});
+  console.log(
+    `[background-generate] job ${jobId} done: combos=${combos.length} failed=${failed} scheduled=${totalScheduled} overflow=${totalOverflow} days=${totalDays}`
+  );
+}
 
 /**
  * POST /api/schedule/regenerate-day
@@ -872,7 +905,7 @@ export const listRuns = asyncHandler(async (_req: Request, res: Response) => {
   const repo = AppDataSource.getRepository(SchedulingRun);
   const runs = await repo.find({
     order: { createdAt: 'DESC' },
-    take: 50,
+    take: 500,
   });
   res.json({ data: runs });
 });

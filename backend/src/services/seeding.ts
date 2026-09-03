@@ -328,43 +328,54 @@ export async function runSeed(): Promise<{ candidateCount: number; message: stri
   }
 
   const candidateRepo = ds.getRepository(Candidate);
-  
+  const skipCandidates = process.env.SEED_SKIP_CANDIDATES === '1';
+
   // Load candidates from the real Excel candidate source
   let candidates: Candidate[] = [];
-  try {
-    const excelFilePath = await locateExcelFile();
-    console.log(`✓ Found Excel file at: ${excelFilePath}`);
-    const excelRows = parseExcelCandidates(excelFilePath);
-    const candidateData = generateExcelCandidates(excelRows, groups);
-    let id = nextCandidateId([]);
-    
-    candidates = candidateData.map((data) => {
-      const candidate = candidateRepo.create({
-        id,
-        ...data,
+  if (!skipCandidates) {
+    try {
+      const excelFilePath = await locateExcelFile();
+      console.log(`✓ Found Excel file at: ${excelFilePath}`);
+      const excelRows = parseExcelCandidates(excelFilePath);
+      const candidateData = generateExcelCandidates(excelRows, groups);
+      let id = nextCandidateId([]);
+      
+      candidates = candidateData.map((data) => {
+        const candidate = candidateRepo.create({
+          id,
+          ...data,
+        });
+        id = nextCandidateId([id]);
+        return candidate;
       });
-      id = nextCandidateId([id]);
-      return candidate;
-    });
+      
+      const total = candidates.length;
+      console.log(`✓ Loaded ${total} candidates from Excel file (PRIORITY DATA SOURCE)`);
+    } catch (err) {
+      throw new Error(
+        `Seed requires the real Excel candidate source. No candidate data was generated: ${err instanceof Error ? err.message : String(err)}`
+      );
+    }
     
-    const total = candidates.length;
-    console.log(`✓ Loaded ${total} candidates from Excel file (PRIORITY DATA SOURCE)`);
-  } catch (err) {
-    throw new Error(
-      `Seed requires the real Excel candidate source. No candidate data was generated: ${err instanceof Error ? err.message : String(err)}`
+    for (let i = 0; i < candidates.length; i += BATCH) {
+      await candidateRepo.save(candidates.slice(i, i + BATCH));
+      console.log(`  → saved ${Math.min(i + BATCH, candidates.length)}/${candidates.length} candidates`);
+    }
+    await groupRepo.save(
+      groups.map((g) => {
+        g.candidateCount = candidates.filter((c) => c.careerGroupId === g.id).length;
+        return g;
+      })
     );
+  } else {
+    await groupRepo.save(
+      groups.map((g) => {
+        g.candidateCount = 0;
+        return g;
+      })
+    );
+    console.log('✓ Skipping candidate import (SEED_SKIP_CANDIDATES=1)');
   }
-  
-  for (let i = 0; i < candidates.length; i += BATCH) {
-    await candidateRepo.save(candidates.slice(i, i + BATCH));
-    console.log(`  → saved ${Math.min(i + BATCH, candidates.length)}/${candidates.length} candidates`);
-  }
-  await groupRepo.save(
-    groups.map((g) => {
-      g.candidateCount = candidates.filter((c) => c.careerGroupId === g.id).length;
-      return g;
-    })
-  );
 
   await logActivity({
     action: 'seeded',

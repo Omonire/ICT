@@ -363,13 +363,11 @@ export async function createPreviewContext(
   const candidateRepo = AppDataSource.getRepository(Candidate);
   const sessionRepo = AppDataSource.getRepository(Session);
   const hallRepo = AppDataSource.getRepository(Hall);
-  const assignmentRepo = AppDataSource.getRepository(CandidateAssignment);
 
-  const [allCandidates, sessions, halls, assignments] = await Promise.all([
+  const [allCandidates, sessions, halls] = await Promise.all([
     loadAllCandidates(candidateRepo),
     loadSessions(sessionRepo, sessionIds),
     loadActiveHalls(hallRepo),
-    assignmentRepo.find({ select: ['candidateId'] }),
   ]);
 
   return {
@@ -377,7 +375,13 @@ export async function createPreviewContext(
     allCandidates,
     sessions,
     halls,
-    scheduledCandidateIds: new Set(assignments.map((assignment) => assignment.candidateId)),
+    // Source of truth is the candidate status column, not assignment rows — so
+    // preview and generate always agree on who is schedulable.
+    scheduledCandidateIds: new Set(
+      allCandidates
+        .filter((c) => c.status === CandidateStatus.SCHEDULED || c.status === CandidateStatus.COMPLETED)
+        .map((c) => c.id)
+    ),
   };
 }
 
@@ -512,7 +516,6 @@ export async function generateScheduling(
     const sessionRepo = qr.manager.getRepository(Session);
     const hallRepo = qr.manager.getRepository(Hall);
     const groupRepo = qr.manager.getRepository(CareerGroup);
-    const assignmentRepo = qr.manager.getRepository(CandidateAssignment);
     const runRepo = qr.manager.getRepository(SchedulingRun);
     const rescheduleRepo = qr.manager.getRepository(ReschedulingEntry);
 
@@ -527,10 +530,16 @@ export async function generateScheduling(
       normalizedCombination
     );
 
-    // Exclude already-scheduled candidates (one assignment per candidate, globally)
-    const scheduledIds = await getAlreadyScheduledIds(
-      assignmentRepo,
-      combinationCandidates.map((c) => c.id)
+    // A candidate is considered "already scheduled" based on its status column
+    // (the single source of truth), NOT on the existence of an assignment row.
+    // This keeps statuses and assignments in sync even if a previous run was
+    // interrupted — a candidate whose status is unscheduled is always re-tryable,
+    // and any stale assignment it has is replaced below instead of deadlocking
+    // the engine into returning zero results forever.
+    const scheduledIds = new Set(
+      allCandidates
+        .filter((c) => c.status === CandidateStatus.SCHEDULED || c.status === CandidateStatus.COMPLETED)
+        .map((c) => c.id)
     );
     const unscheduledCandidates = combinationCandidates.filter(
       (c) => !scheduledIds.has(c.id)
@@ -603,7 +612,12 @@ export async function generateScheduling(
         }
         await qr.manager.query(
           `INSERT INTO candidate_assignments (id, candidate_id, session_id, hall_id, seat_number, assigned_at)
-           VALUES ${rows.join(',')} ON CONFLICT DO NOTHING`,
+           VALUES ${rows.join(',')}
+           ON CONFLICT (candidate_id)
+           DO UPDATE SET session_id = EXCLUDED.session_id,
+                         hall_id = EXCLUDED.hall_id,
+                         seat_number = EXCLUDED.seat_number,
+                         assigned_at = EXCLUDED.assigned_at`,
           params
         );
       }
@@ -1345,25 +1359,4 @@ async function loadActiveHalls(
 ): Promise<Hall[]> {
   const halls = await repo.find();
   return halls.filter((h) => h.status === 'active');
-}
-
-async function getAlreadyScheduledIds(
-  repo: Repository<CandidateAssignment>,
-  candidateIds: string[]
-): Promise<Set<string>> {
-  const result = new Set<string>();
-  if (candidateIds.length === 0) return result;
-
-  const CHUNK = 5000;
-  for (let i = 0; i < candidateIds.length; i += CHUNK) {
-    const chunk = candidateIds.slice(i, i + CHUNK);
-    const assignments = await repo.find({
-      where: chunk.map((id) => ({ candidateId: id })),
-      select: ['candidateId'],
-    });
-    for (const a of assignments) {
-      result.add(a.candidateId);
-    }
-  }
-  return result;
 }

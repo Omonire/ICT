@@ -27,3 +27,14 @@ bootstrap().catch((err) => {
   console.error('[api] failed to start:', err);
   process.exit(1);
 });
+
+// Prevent a single unhandled rejection (e.g. a dropped DB connection during a
+// long scheduling job) from killing the whole process, which would reset every
+// in-flight request the client sees as an ECONNRESET / "socket hang up".
+process.on('unhandledRejection', (reason) => {
+  console.error('[api] unhandled rejection:', reason);
+});
+
+process.on('uncaughtException', (err) => {
+  console.error('[api] uncaught exception:', err);
+});
